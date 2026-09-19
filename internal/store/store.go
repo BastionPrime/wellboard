@@ -18,7 +18,12 @@ import (
 )
 
 // CurrentVersion is the state schema version written by this build.
-const CurrentVersion = 1
+//
+// v2 (Phase 2) added model.Server.StaleMisses (initial TZ 5.7.5 miss
+// counter) and the subscription lifecycle fields on Source (UserInfo,
+// HWIDStatus, Announce — present in the TZ 5.3 example since Phase 1, but
+// only written starting Phase 2).
+const CurrentVersion = 2
 
 // fileMode / dirMode are the production permissions (NFR-2.3).
 const (
@@ -91,10 +96,21 @@ func (s *Store) Load() (*model.State, error) {
 	return st, nil
 }
 
-// migrate moves an older state schema forward in place. v1 is the initial
-// schema, so the chain is empty; future versions append steps here.
+// migrate moves an older state schema forward in place.
+//
+// v1 → v2: seed Server.StaleMisses for servers already marked stale
+// (Phase 2, initial TZ 5.7.5): a stale v1 server has survived at least one
+// missed update, so the counter starts at 1 — giving it the full 2-update
+// grace window would overstate its freshness.
 func migrate(st *model.State) error {
-	// v1 → v2: (reserved) no steps yet.
+	if st.Version < 2 {
+		for i := range st.Servers {
+			if st.Servers[i].Stale && st.Servers[i].StaleMisses == 0 {
+				st.Servers[i].StaleMisses = 1
+			}
+		}
+		st.Version = 2
+	}
 	return nil
 }
 

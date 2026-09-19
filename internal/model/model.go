@@ -9,13 +9,13 @@ package model
 // State is the root of state.json. Version is the schema version; the store
 // migrates older files forward (initial TZ 7, Phase 1).
 type State struct {
-	Version    int          `json:"version"`
-	Settings   Settings     `json:"settings"`
-	Sources    []Source     `json:"sources"`
-	Servers    []Server     `json:"servers"`
-	Groups     []Group      `json:"groups"`
-	Routes     []Route      `json:"routes"`
-	LANDevices []LANDevice  `json:"lan_devices"`
+	Version    int         `json:"version"`
+	Settings   Settings    `json:"settings"`
+	Sources    []Source    `json:"sources"`
+	Servers    []Server    `json:"servers"`
+	Groups     []Group     `json:"groups"`
+	Routes     []Route     `json:"routes"`
+	LANDevices []LANDevice `json:"lan_devices"`
 }
 
 // Settings holds the global user preferences (initial TZ 5.3, FR-9.1).
@@ -47,17 +47,17 @@ const (
 
 // Source is one server source: a subscription or the manual bucket.
 type Source struct {
-	ID          string  `json:"id"`
-	Kind        string  `json:"kind"`
-	Name        string  `json:"name"`
-	URL         string  `json:"url,omitempty"`
-	Enabled     bool    `json:"enabled,omitempty"`
-	UpdateIntervalSec int `json:"update_interval_sec,omitempty"`
-	LastUpdate  string  `json:"last_update,omitempty"`
-	LastError   *string `json:"last_error,omitempty"`
-	UserInfo    *UserInfo `json:"userinfo,omitempty"`
-	HWIDStatus  *HWIDStatus `json:"hwid_status,omitempty"`
-	Announce    *string `json:"announce,omitempty"`
+	ID                string      `json:"id"`
+	Kind              string      `json:"kind"`
+	Name              string      `json:"name"`
+	URL               string      `json:"url,omitempty"`
+	Enabled           bool        `json:"enabled,omitempty"`
+	UpdateIntervalSec int         `json:"update_interval_sec,omitempty"`
+	LastUpdate        string      `json:"last_update,omitempty"`
+	LastError         *string     `json:"last_error,omitempty"`
+	UserInfo          *UserInfo   `json:"userinfo,omitempty"`
+	HWIDStatus        *HWIDStatus `json:"hwid_status,omitempty"`
+	Announce          *string     `json:"announce,omitempty"`
 }
 
 // UserInfo carries the subscription traffic quota (FR-7.1).
@@ -79,35 +79,40 @@ type HWIDStatus struct {
 // Server is one proxy in the unified pool (FR-3.1). Raw holds the mihomo
 // proxy dictionary verbatim — WellBoard does not interpret proxy fields.
 type Server struct {
-	ID       string         `json:"id"`
-	SourceID string         `json:"source_id"`
-	Name     string         `json:"name"`
-	Type     string         `json:"type"`
+	ID       string `json:"id"`
+	SourceID string `json:"source_id"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
 	// Raw is the mihomo proxy map as received from the subscription /
 	// converter (initial TZ 5.3: "proxy-словарь mihomo как есть").
-	Raw     map[string]any `json:"raw"`
+	Raw map[string]any `json:"raw"`
 	// DelayMS is the last measured latency (FR-3.1); 0 = never tested.
 	DelayMS int `json:"delay_ms,omitempty"`
-	// Stale marks a server that vanished from its subscription (FR-4.8).
+	// Stale marks a server that vanished from its subscription (FR-4.8):
+	// it is excluded from generation; routes on it report "target lost".
 	Stale bool `json:"stale,omitempty"`
+	// StaleMisses counts consecutive updates the server was absent
+	// (initial TZ 5.7.5: delete after 3). Reset when it reappears.
+	// Schema v2 (Phase 2); migrated from the Phase 1 raw-map encoding.
+	StaleMisses int `json:"stale_misses,omitempty"`
 }
 
 // GroupType is the mihomo proxy-group strategy (FR-3.3).
 type GroupType string
 
 const (
-	GroupSelect       GroupType = "select"
-	GroupURLTest      GroupType = "url-test"
-	GroupFallback     GroupType = "fallback"
-	GroupLoadBalance  GroupType = "load-balance"
+	GroupSelect      GroupType = "select"
+	GroupURLTest     GroupType = "url-test"
+	GroupFallback    GroupType = "fallback"
+	GroupLoadBalance GroupType = "load-balance"
 )
 
 // Group is a user-defined proxy group (FR-3.3). Members reference server or
 // group IDs; the generator resolves them to mihomo proxy names.
 type Group struct {
-	ID      string    `json:"id"`
-	Name    string    `json:"name"`
-	Type    GroupType `json:"type"`
+	ID   string    `json:"id"`
+	Name string    `json:"name"`
+	Type GroupType `json:"type"`
 	// Members are server/group IDs in priority order (fallback order).
 	Members []string `json:"members"`
 }
@@ -115,9 +120,9 @@ type Group struct {
 // Route is one routing rule set (FR-4.1): ordered conditions + target +
 // availability policy.
 type Route struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Enabled bool     `json:"enabled"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
 	// Order defines the rules position among other routes (FR-4.5); the
 	// generator emits rules in ascending order, ties broken by ID for
 	// determinism.

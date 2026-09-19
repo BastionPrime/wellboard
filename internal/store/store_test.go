@@ -104,15 +104,22 @@ func TestLoadNewerVersion(t *testing.T) {
 	}
 }
 
-// TestMigrateHookIsNoopForV1: the migration hook runs on load and is a
-// no-op for v1 (the only current schema).
-func TestMigrateHookIsNoopForV1(t *testing.T) {
+// TestMigrateV1BumpsToV2: the Phase 2 migration bumps v1 states to v2
+// (StaleMisses seeding is covered by migrate_test.go).
+func TestMigrateV1BumpsToV2(t *testing.T) {
 	st := &model.State{Version: 1}
 	if err := migrate(st); err != nil {
 		t.Fatalf("migrate v1: %v", err)
 	}
-	if st.Version != 1 {
-		t.Fatalf("version = %d, want 1", st.Version)
+	if st.Version != CurrentVersion {
+		t.Fatalf("version = %d, want %d", st.Version, CurrentVersion)
+	}
+	// Idempotent: migrating an already-current state is a no-op.
+	if err := migrate(st); err != nil {
+		t.Fatalf("migrate v2: %v", err)
+	}
+	if st.Version != CurrentVersion {
+		t.Fatalf("version = %d, want %d", st.Version, CurrentVersion)
 	}
 }
 

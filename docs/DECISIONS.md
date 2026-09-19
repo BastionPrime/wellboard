@@ -122,6 +122,102 @@ Phase 1 design decisions:
   that setup-go pins 1.22 = go.mod while the docker dev image is 1.23, and
   an explicit `go build ./...` step was added between vet and test.
 
+## Phase 2 decisions and verified facts
+
+License and toolchain verification (2026-09-19): the mihomo repo LICENSE
+file at tag v1.19.31 is **GPL-3.0** (the README says "GPL-3.0"; the task
+brief said AGPL-3.0 — the actual file wins). Remnawave backend is
+AGPL-3.0-only (`package.json` license field), nikki is GPL-3.0.
+
+| # | Fact | Source |
+|---|------|--------|
+| C1 | mihomo `common/convert` exposes exactly `ConvertsV2Ray(buf []byte) ([]map[string]any, error)` (plus unexported helpers). It parses plain AND whole-payload-base64 share-link lists (vless/trojan/ss/vmess/hysteria/hysteria2/tuic/anytls/mieru/socks/…) in one call; zero parsed proxies → error. Verified by compiling against the module and running a probe test inside the v1.19.31 checkout. | `common/convert/converter.go:16` (v1.19.31) |
+| C2 | The library pull is NOT isolated: `common/convert` imports `mihomo/log` (→ common/observable), `common/utils` (→ gofrs/uuid, golang.org/x/exp), `metacubex/sing-shadowsocks` (VerifyMethod), `metacubex/http`, `metacubex/randv2`. `go list -deps` counts 251 packages with 53 external deps — the full mihomo dependency graph lands in go.sum. | `go list -deps ./common/convert` on v1.19.31 |
+| C3 | Convert output quirks (probed): `port` arrives as string (e.g. "443"); vmess JSON links give int; upstream `uniqueName` dedupes duplicate fragments with `-01` suffixes; ws-opts headers get a random `User-Agent` injected (RandUserAgent — that is a UA string inside the PROXY config, unrelated to our HTTP client UA). | probe tests in the v1.19.31 checkout |
+| C4 | Remnawave response headers verified in source: `subscription-userinfo` = `upload=…; download=…; total=…; expire=…` (upload is always 0, expire unix seconds, 2099 → 0); `profile-update-interval`, `profile-title` (may be `base64:…`), `announce` (may be `base64:…`), `x-hwid-active` / `x-hwid-not-supported` / `x-hwid-max-devices-reached` / `x-hwid-limit` on 200 AND 404-style responses. | `subscription.service.ts:188-243, 360-378, 621-632`, `get-user-info.headers.ts` |
+| C5 | Remnawave 404-by-response-rule exists (`STATUS_CODE_404` → HttpException E404), distinct from "subscription not found". Both are handled the same way by WellBoard: x-hwid headers decide the message (device limit vs dead link). | `response-rules.middleware.ts:142-143` |
+
+Phase 2 design decisions:
+
+- **H1 — HWID algorithm.** Exactly as FR-2.1:
+  `HEX_UPPER(SHA256(primary_mac || salt_32B))[0:32]`, salt generated once,
+  stored as `<state>/hwid` (two lines: hwid, salt; 0600/0700 in prod,
+  atomic tmp+rename). `Reset()` regenerates BOTH (new device slot).
+  Load() falls back to Generate() when the file is missing or malformed.
+  MAC discovery: `ubus call network.device status {"name":"br-lan"}`
+  (macaddr field) → first non-loopback interface (name-sorted). Dev mode:
+  `WELLBOARD_DEV_MAC` env or `<state>/wellboard-dev-mac` file.
+  **Bug found and fixed during testing:** the initial ubus JSON scrape
+  extracted the KEY `"macaddr"` instead of its value (first-quote index
+  after the key); fixed to locate the value after the colon. Unit-tested
+  against real ubus output shapes.
+- **H2 — HWID validation.** `hwid.ValidPattern` =
+  `^[a-zA-Z0-9=-]{10,64}$` (R4). Updater re-validates the resolved HWID
+  before sending; a failing HWID aborts the update round loudly.
+- **S1 — Fetch strategy (R1/R2/R3/R6).** UA = `WellBoard/<ver> mihomo`.
+  URL candidates when the path has no known clientType segment
+  (stash|singbox|mihomo|json|v2ray-json|clash, R2): try `<base>/mihomo`
+  (query preserved) FIRST, then the raw URL. Definitive failures (404,
+  403, 401, hwid-limit) are returned, not retried; network errors get 2
+  retries with linear backoff (2s, 4s default). Timeout 20s per request.
+- **S2 — Error mapping (FR-2.4).** 404 with any x-hwid limit header →
+  device-limit message + "check the link"; 404 without → dead-link
+  message; 403 with limit headers → device limit, 403 without → "panel
+  has no response rule for this client" (R1); 200 with
+  x-hwid-not-supported → logged as our-side bug, surfaced in state.
+- **S3 — Interval semantics.** `profile-update-interval` parses as
+  seconds; values < 24 are treated as hours (clash convention). The
+  header value only applies when the user has not pinned an interval
+  (FR-1.1: header = default). Fallback 12h. Scheduler tick clamped to
+  ≥ 1 minute so a hostile header cannot create a request storm.
+- **M1 — Merge (5.7.5).** Identity = (name, server, port) within the
+  source (source_id implicit). Matched servers keep ID + DelayMS, get a
+  fresh raw map, stale cleared. Vanished servers: StaleMisses+1, Stale
+  set, deleted at the 3rd consecutive miss. Resurrection keeps the ID.
+  Server IDs are derived: `srv_<8 hex sha256(sourceID|name|server|port)>`
+  — deterministic across reinstalls (FR-3.4).
+- **M2 — Network failure policy (5.7.4/NFR-5).** Any fetch or parse
+  error records `last_error` (URL redacted, guardrail 5) and leaves the
+  server list untouched — verified by tests against a dead port and an
+  unknown-format body.
+- **C6 — mihomo as a library (license).** WellBoard imports
+  `github.com/metacubex/mihomo v1.19.31` **strictly through one file**
+  (`internal/convert/convert.go`) calling `convert.ConvertsV2Ray`.
+  **LICENSE STATUS — OPEN QUESTION FOR THE OWNER:** mihomo is GPL-3.0
+  (see verification above). Linking GPL-3.0 code into the WellBoard
+  binary makes the combined work GPL-3.0 (GPL §5); shipping it under the
+  project's MIT claim (Q8) is a license conflict unless
+  (a) the owner relicenses WellBoard GPL-3.0 (+3.0 for future versions
+  per the "or later" wording is NOT present in mihomo's LICENSE, so
+  GPL-3.0-only), or (b) the converter is isolated into a separate
+  GPL-licensed binary/process with a clean boundary, or (c) the link
+  parsing is reimplemented from scratch (no mihomo code). The TZ told
+  the agent to "use the mihomo converter, do not write your own parser"
+  (FR-1.3), so the import stays; the wrapper is a single file so option
+  (c) remains a one-file swap. **This must be resolved before any public
+  release.** Not legal advice; the owner decides.
+- **M3 — Mock server topology.** The fixture handlers live in
+  `internal/subscription/testfixtures` (importable, one source of
+  truth); `test/mock-remnawave` is a thin `main` that serves the same
+  mux for manual runs. The /sub endpoint emulates R1 (403 for a UA
+  without "mihomo") and /sub/mihomo emulates R2 (200 for any UA) so the
+  client's path-candidate strategy is exercised against realistic panel
+  behavior. Fixture set: YAML (2 proxies), YAML (1 proxy — vanish
+  scenario), base64 link list, plain link list, 404+hwid-limit, 404
+  plain, 200+max-devices, announce+title+interval, not-supported,
+  connection-drop, hang, header echo.
+- **M4 — State schema v2.** `model.Server.StaleMisses` added (miss
+  counter; raw map stays untouched so nothing leaks into the generated
+  profile). Migration v1→v2 seeds StaleMisses=1 for already-stale
+  servers (they have survived ≥1 missed update). Source lifecycle
+  fields (UserInfo/HWIDStatus/Announce) were in the model since Phase 1
+  per the TZ 5.3 example; Phase 2 starts writing them.
+- **D8 — Scheduler.** Single ticker (interval from settings, min 1
+  minute), first round runs immediately after Start, manual UpdateNow is
+  synchronous (API button, FR-1.4). Per-source intervals live in state
+  and are re-read by the updater every round — a header-provided
+  interval takes effect without a restart.
+
 ## Risks
 
 - **RK1.** `nikki.mixin.api_secret` is a 6-digit pseudo-random number
@@ -136,3 +232,13 @@ Phase 1 design decisions:
 - **RK4.** CI (`golang:1.23` / setup-go 1.22) has not run on GitHub yet —
   the repo's remote is a local bare repo; workflow will be exercised when
   the project moves to GitHub. Local docker runs are the current green gate.
+- **RK5.** GPL-3.0 contamination via the mihomo import (C6) — release
+  blocker for the public repo until the owner picks a path.
+- **RK6.** The /mihomo path strategy is verified only against the mock;
+  a real panel may have `disableSubscriptionAccessByPath` (R2) or 404 on
+  the path form — the plain-URL fallback covers that, but only a live
+  customer link (Phase 2 acceptance, deferred to the customer-provided
+  test link) proves it.
+- **RK7.** The clash "hours < 24" interval heuristic (S3) is a
+  convention guess; a panel sending literal small-second intervals would
+  be misread as hours. Real-link testing will confirm.
