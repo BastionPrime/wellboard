@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -299,6 +300,20 @@ func (s *Server) handleMetaCubeXD(w http.ResponseWriter, r *http.Request) {
 	// check (http.ServeFile rejects ".." segments on its own as well).
 	rel := strings.TrimPrefix(r.URL.Path, "/ui/metacubexd/")
 	rel = path.Clean("/" + rel) // absolute, ".." neutralized
+
+	// config.js is the dist's own runtime hook: the SPA reads
+	// window.__METACUBEXD_CONFIG__.defaultBackendURL to prefill the
+	// endpoint form. The shipped dist has it empty, so out of the box
+	// the monitoring tab greets with an input form instead of live
+	// traffic. We serve a generated one instead, pointing at our
+	// /api/mihomo proxy. The secret stays server-side: the proxy
+	// injects the Bearer token itself, so it must NOT appear here
+	// (review follow-up, FR-8 / DECISIONS D18).
+	if rel == "/config.js" {
+		s.serveMetaCubeXDConfig(w)
+		return
+	}
+
 	full := dir + rel
 	if st, err := os.Stat(full); err == nil && st.IsDir() {
 		// Directory: index.html (matches the dist's own layout).
@@ -308,6 +323,24 @@ func (s *Server) handleMetaCubeXD(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 	http.ServeFile(w, r, full)
+}
+
+// serveMetaCubeXDConfig writes the generated config.js: the dist
+// fetches it relative to /ui/metacubexd/ before app boot and reads
+// window.__METACUBEXD_CONFIG__.defaultBackendURL as the prefill.
+// The value is a same-origin path — the browser resolves it against
+// the WellBoard origin, so no scheme/host is needed and the mihomo
+// secret never reaches the client (the proxy adds the Bearer token).
+func (s *Server) serveMetaCubeXDConfig(w http.ResponseWriter) {
+	body := "window.__METACUBEXD_CONFIG__ = {\n" +
+		"  defaultBackendURL: '/api/mihomo',\n" +
+		"  githubToken: '',\n" +
+		"}\n"
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(http.StatusOK)
+	io.WriteString(w, body)
 }
 
 // handleMihomoProxy forwards /api/mihomo/* to the mihomo

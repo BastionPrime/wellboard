@@ -416,4 +416,22 @@ func TestPhase5E2E(t *testing.T) {
 		t.Fatalf("/ui/metacubexd/ body does not look like the dist index: %.120s", body)
 	}
 	t.Logf("metacubexd dist served OK (%d bytes)", len(body))
+
+	// config.js is generated (review follow-up): it must prefill
+	// defaultBackendURL with the /api/mihomo proxy and carry no secret.
+	resp, body = p5Get(t, st.ts, "/ui/metacubexd/config.js")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("/ui/metacubexd/config.js: %d", resp.StatusCode)
+	}
+	if !strings.Contains(resp.Header.Get("Content-Type"), "javascript") {
+		t.Fatalf("config.js Content-Type = %q", resp.Header.Get("Content-Type"))
+	}
+	if !strings.Contains(body, "window.__METACUBEXD_CONFIG__") ||
+		!strings.Contains(body, "defaultBackendURL: '/api/mihomo'") {
+		t.Fatalf("config.js does not prefill the backend URL: %q", body)
+	}
+	if strings.Contains(body, p5Secret) && p5Secret != "" {
+		t.Fatalf("config.js leaks the mihomo secret: %q", body)
+	}
+	t.Log("metacubexd config.js generated with defaultBackendURL=/api/mihomo")
 }

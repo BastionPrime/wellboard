@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -312,6 +313,35 @@ func TestMetaCubeXDServing(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode == 200 && resp.Request.URL.Path == "/api/v1/apply" {
 		t.Fatal("traversal escaped the UI dir")
+	}
+
+	// config.js is generated, not served from the dist: it must
+	// prefill the metacubexd backend form with our /api/mihomo proxy
+	// (review follow-up: the shipped dist ships defaultBackendURL:''
+	// and the tab shows an input form instead of live traffic).
+	creq, _ := http.NewRequest("GET", ts.URL+"/ui/metacubexd/config.js", nil)
+	cresp, cerr := ts.Client().Do(creq)
+	if cerr != nil {
+		t.Fatal(cerr)
+	}
+	cbody, _ := io.ReadAll(cresp.Body)
+	cresp.Body.Close()
+	if cresp.StatusCode != 200 {
+		t.Fatalf("config.js: %d", cresp.StatusCode)
+	}
+	if ct := cresp.Header.Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Fatalf("config.js Content-Type = %q, want javascript", ct)
+	}
+	if !strings.Contains(string(cbody), "window.__METACUBEXD_CONFIG__") ||
+		!strings.Contains(string(cbody), "defaultBackendURL: '/api/mihomo'") {
+		t.Fatalf("config.js body does not prefill the backend URL: %q", cbody)
+	}
+	// The secret must never reach the browser (the proxy injects it).
+	_, ts2 := newMonitorTestServer(t, MonitorConfig{UIDir: dir, MihomoAPIAddr: "127.0.0.1:19090", MihomoAPISecret: "s3cret"})
+	defer ts2.Close()
+	code, body = do(t, ts2, "GET", "/ui/metacubexd/config.js", "")
+	if code != 200 || strings.Contains(body, "s3cret") {
+		t.Fatalf("config.js must not leak the secret: %d %q", code, body)
 	}
 }
 
