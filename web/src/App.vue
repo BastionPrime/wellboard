@@ -14,7 +14,9 @@ const navItems = [
   { path: '/sources', key: 'nav.sources' },
   { path: '/servers', key: 'nav.servers' },
   { path: '/routes', key: 'nav.routes' },
+  { path: '/groups', key: 'nav.groups' },
   { path: '/templates', key: 'nav.templates' },
+  { path: '/logs', key: 'nav.logs' },
   { path: '/settings', key: 'nav.settings' },
 ]
 

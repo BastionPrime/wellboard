@@ -25,8 +25,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/wellboard/wellboard/internal/convert"
 	"github.com/wellboard/wellboard/internal/generator"
 	"github.com/wellboard/wellboard/internal/model"
+	"github.com/wellboard/wellboard/internal/subscription"
 	"github.com/wellboard/wellboard/internal/templates"
 )
 
@@ -79,6 +81,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/v1/sources/{id}", s.handleSourcePatch)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", s.handleSourceDelete)
 	mux.HandleFunc("GET /api/v1/servers", s.handleServersList)
+	mux.HandleFunc("POST /api/v1/servers", s.handleServersCreate)
 	mux.HandleFunc("GET /api/v1/servers/{id}", s.handleServerGet)
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", s.handleServerDelete)
 	mux.HandleFunc("GET /api/v1/groups", s.handleGroupsList)
@@ -385,7 +388,8 @@ func (s *Server) handleSourceDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // ----------------------------------------------------------------------------
-// Servers (read/delete; creation goes through subscriptions/manual links)
+// Servers (read/delete; creation via POST /servers parses share links —
+// FR-1.3 — into the manual source, or comes from subscriptions)
 // ----------------------------------------------------------------------------
 
 func (s *Server) handleServersList(w http.ResponseWriter, r *http.Request) {
@@ -396,6 +400,72 @@ func (s *Server) handleServersList(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"servers": st.Servers})
+}
+
+// serverIn is the manual-server creation payload (FR-1.3): one or more
+// share links (vless://, trojan://, ss://, vmess://, hysteria2://,
+// tuic://) pasted as text. The mihomo converter parses them (policy
+// C1/C2: never a hand-written parser).
+type serverIn struct {
+	Links string `json:"links"`
+}
+
+// manualSourceID returns the manual source id, creating the source on
+// first use (FR-1.3: manual servers live in the built-in bucket).
+func manualSourceID(st *model.State) string {
+	for _, src := range st.Sources {
+		if src.Kind == string(model.SourceManual) {
+			return src.ID
+		}
+	}
+	id := newID("sub", st)
+	st.Sources = append(st.Sources, model.Source{
+		ID: id, Kind: string(model.SourceManual), Name: "Manual", Enabled: true,
+	})
+	return id
+}
+
+func (s *Server) handleServersCreate(w http.ResponseWriter, r *http.Request) {
+	var in serverIn
+	if err := decodeStrict(r, &in, 0); err != nil {
+		writeError(w, err)
+		return
+	}
+	if strings.TrimSpace(in.Links) == "" {
+		writeError(w, httpErr(http.StatusBadRequest, "links is required (paste vless://, trojan://, ss://, vmess://, hysteria2:// or tuic:// share links)"))
+		return
+	}
+	proxies, err := convert.Links([]byte(in.Links))
+	if err != nil {
+		writeError(w, httpErr(http.StatusBadRequest, "could not parse links: %v", err))
+		return
+	}
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+	srcID := manualSourceID(st)
+	res := subscription.Merge(st, srcID, proxies)
+	if res.Added+res.Updated == 0 {
+		writeError(w, httpErr(http.StatusConflict, "no usable proxies parsed from links"))
+		return
+	}
+	if err := s.save(st); err != nil {
+		writeError(w, err)
+		return
+	}
+	// Report the resulting manual-source servers (merge matched by
+	// name/server/port — updated entries keep their IDs, FR-3.4).
+	out := make([]model.Server, 0, res.Added+res.Updated)
+	for _, srv := range st.Servers {
+		if srv.SourceID == srcID {
+			out = append(out, srv)
+		}
+	}
+	s.log("servers created via manual links: %d added, %d updated (source %s)", res.Added, res.Updated, srcID)
+	writeJSON(w, http.StatusCreated, map[string]any{"servers": out})
 }
 
 func (s *Server) handleServerGet(w http.ResponseWriter, r *http.Request) {

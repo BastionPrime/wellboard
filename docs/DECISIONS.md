@@ -320,6 +320,32 @@ Phase 3 design decisions:
   ru/en JSON dictionaries + `{param}` substitution, no i18n library
   (dependency policy). Locale comes from `GET /api/v1/settings` (`ru`
   default, decision Q11); the header toggle PATCHes `settings.lang`.
+- **D16 — Review follow-up (phase 4 fix): closing the UI gaps.**
+  `POST /api/v1/servers` was added to the Go API (api.go
+  `handleServersCreate`): the manual-server form (FR-1.3) POSTs pasted
+  share links, the handler runs them through `convert.Links` (the
+  mihomo converter — policy C1/C2, no hand-written parser) and merges
+  the proxies into the built-in manual source (created on first use).
+  The route form (FR-4.1-4.3/4.7) is a single Vue form — POST create /
+  PATCH edit — with condition rows (type+value, src-device picks from
+  `GET /lan-devices` and offers `POST /lan-devices/static`; the dev-stub
+  `{"status":"simulated","detail":…}` answer is surfaced verbatim,
+  FR-4.4). The Groups screen (TZ §7 phase 4 screen list, "Группы")
+  does create (name+type+members from the pool) and delete; group
+  EDIT via PATCH stays server-only for now — members change by
+  recreating the group (accepted: the API contract is create/patch/
+  delete, the UI ships create+delete in v1).
+- **D17 — Logs/diagnostics screen is an honest Phase-5 stub.**
+  FR-9.2 (app + nikki/mihomo logs) and FR-9.4 ("check nikki / check
+  mihomo API / check geodata") have NO backend endpoints in phases 0-4
+  (`internal/api/api.go` has no GET /logs or diagnostics routes), and
+  the TZ itself schedules the monitoring surface for Phase 5 (§7
+  "Фаза 5 — Мониторинг и применение с откатом", which owns validate →
+  apply → health → rollback and the mihomo API integration). The
+  LogsView therefore renders an explicit "arrives in Phase 5" notice
+  listing exactly what is deferred — no dead buttons. Dashboard
+  already covers the operational visibility available today (service
+  health, counters, per-source errors, quotas and the FR-7.3 announce).
 
 ## Risks
 

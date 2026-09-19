@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { t, fmtBytes, fmtDate } from '../i18n'
 import { api, type Health } from '../api'
 import { useSourcesStore } from '../stores/sources'
@@ -30,11 +30,24 @@ function targetLabel(target: { type: string; id?: string }): string {
   if (target.type === 'server') return pool.serverName(target.id ?? '')
   return pool.groupName(target.id ?? '')
 }
+
+// announceList surfaces the providers' announce messages (FR-7.3):
+// decoded from subscription headers by the updater, stored per source.
+const announceList = computed(() =>
+  sources.sources
+    .filter((s) => s.announce)
+    .map((s) => ({ id: s.id, name: s.name, text: s.announce ?? '' })),
+)
 </script>
 
 <template>
   <section>
     <h1>{{ t('dashboard.title') }}</h1>
+
+    <!-- FR-7.3: the provider announce message from subscription headers. -->
+    <div v-for="s in announceList" :key="s.id" class="announce">
+      <strong>{{ s.name }}:</strong> {{ s.text }}
+    </div>
 
     <div class="cards">
       <div class="card">
@@ -117,6 +130,16 @@ function targetLabel(target: { type: string; id?: string }): string {
 h1 {
   margin: 0 0 12px;
   font-size: 1.3rem;
+}
+.announce {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  margin-bottom: 10px;
+  word-break: break-word;
 }
 h2 {
   margin: 20px 0 8px;
