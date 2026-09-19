@@ -1,0 +1,10 @@
+id: social
+name: "Соцсети"
+description: "Instagram, Facebook, Twitter/X, TikTok, Threads."
+typical_target: group
+conditions:
+  - {type: geosite, value: INSTAGRAM}
+  - {type: geosite, value: FACEBOOK}
+  - {type: geosite, value: TWITTER}
+  - {type: geosite, value: TIKTOK}
+  - {type: geosite, value: THREADS}

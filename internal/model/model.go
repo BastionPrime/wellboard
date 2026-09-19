@@ -134,6 +134,12 @@ type Route struct {
 	// OnUnavailable is the fail behavior when the target is down (FR-4.7,
 	// decision Q4): "block" (default) or "direct".
 	OnUnavailable string `json:"on_unavailable"`
+	// Providers names local fallback rule-provider lists (FR-5.4) shipped
+	// in templates/providers/<name>.yaml. Filled when the route was
+	// created from a template; the generator emits a RULE-SET line per
+	// provider in addition to the condition lines. The route stays an
+	// ordinary editable route (FR-5.2).
+	Providers []string `json:"providers,omitempty"`
 }
 
 // RouteConditionType enumerates the supported condition kinds (FR-4.2).

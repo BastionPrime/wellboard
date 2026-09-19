@@ -11,12 +11,14 @@
 //	                 group per enabled route (target, then REJECT|DIRECT per
 //	                 on_unavailable, decision Q4 / FR-4.7); "rt:default"
 //	                 select group for the default policy (FR-4.6).
-//	rule-providers — emitted only when geosite conditions exist (initial
-//	                 TZ 5.4.3); Phase 1 emits the (valid) empty mapping as
-//	                 the structural hook for Phase 3 local fallback lists
-//	                 (FR-5.4) — see docs/DECISIONS.md G2.
+//	rule-providers — emitted when geosite conditions exist OR any route
+//	                 references local fallback providers (FR-5.4, Phase 3):
+//	                 one "type: file, behavior: domain" entry per provider,
+//	                 path "./providers/<name>.yaml"; the caller materializes
+//	                 the payload files next to the profile (WriteProviders).
 //	rules          — one line per condition per route, in ascending route
-//	                 order (FR-4.5); the last line is MATCH,rt:default.
+//	                 order (FR-4.5), plus one RULE-SET line per referenced
+//	                 provider; the last line is MATCH,rt:default.
 //
 // Transport sections (tun, dns, ports, external-controller, …) are NOT
 // generated: they belong to nikki (docs/DECISIONS.md N3).
@@ -114,12 +116,36 @@ type profile struct {
 // the rendered bytes; a *Problems error means the state references objects
 // that no longer exist and must be surfaced to the user (FR-4.8).
 func Generate(st *model.State) (out []byte, err error) {
+	return GenerateWithProviders(st, nil)
+}
+
+// GenerateWithProviders additionally knows the set of provider names
+// that have a local payload file (FR-5.4). A route referencing a provider
+// without a payload is a Problems entry (the profile would point at a
+// missing file). Names not in known but referenced by routes are still
+// emitted; known may be nil (skip the existence check — dev mode /
+// caller-provided providers).
+func GenerateWithProviders(st *model.State, known map[string]bool) (out []byte, err error) {
 	if st == nil {
 		return nil, fmt.Errorf("generator: nil state")
 	}
 	doc, err := build(st)
 	if err != nil {
 		return nil, err
+	}
+	if known != nil {
+		var missing []string
+		if rp := doc.RuleProviders; rp != nil {
+			for name := range *rp {
+				if !known[name] {
+					missing = append(missing, name)
+				}
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			return nil, fmt.Errorf("generator: no local payload for provider(s) %v", missing)
+		}
 	}
 	out, err = marshalProfile(doc)
 	if err != nil {
@@ -288,6 +314,7 @@ func build(st *model.State) (*profile, error) {
 	serviceGroups := make([]map[string]any, 0, len(routes)+1)
 	rules := make([]string, 0, 8)
 	needGeosite := false
+	usedProviders := map[string]bool{}
 
 	for _, rt := range routes {
 		if !rt.Enabled {
@@ -319,7 +346,7 @@ func build(st *model.State) (*profile, error) {
 			"interval": RouteGroupIntervalSec,
 		})
 
-		if len(rt.Conditions) == 0 {
+		if len(rt.Conditions) == 0 && len(rt.Providers) == 0 {
 			prob.add("route %s: no conditions, no rules emitted", rt.ID)
 			continue
 		}
@@ -333,6 +360,20 @@ func build(st *model.State) (*profile, error) {
 				needGeosite = true
 			}
 			rules = append(rules, line+","+svcName)
+		}
+		// Local fallback providers (FR-5.4): one RULE-SET line each,
+		// AFTER the explicit conditions of the same route (same target).
+		for _, p := range rt.Providers {
+			if err := validProviderName(p); err != nil {
+				prob.add("route %s: provider %q: %v", rt.ID, p, err)
+				continue
+			}
+			if usedProviders[p] {
+				prob.add("route %s: provider %q already used by an earlier route", rt.ID, p)
+				continue
+			}
+			usedProviders[p] = true
+			rules = append(rules, "RULE-SET,"+p+","+svcName)
 		}
 	}
 
@@ -359,13 +400,51 @@ func build(st *model.State) (*profile, error) {
 		ProxyGroups: append(userGroups, serviceGroups...),
 		Rules:       rules,
 	}
-	if needGeosite {
-		// Section present (empty mapping, valid for mihomo) as the hook
-		// for Phase 3 local fallback lists; see docs/DECISIONS.md G2.
-		empty := map[string]any{}
-		prof.RuleProviders = &empty
+	if needGeosite || len(usedProviders) > 0 {
+		rp := map[string]any{}
+		// Stable order: sorted provider names.
+		for _, p := range sortedKeys(usedProviders) {
+			rp[p] = map[string]any{
+				"type":     "file",
+				"behavior": "domain",
+				"path":     ProviderPath(p),
+			}
+		}
+		prof.RuleProviders = &rp
 	}
 	return prof, nil
+}
+
+// ProviderPath is the rule-provider payload path written into the
+// profile: "./providers/<name>.yaml" (relative to the profile file, the
+// same convention nikki uses for its run dir).
+func ProviderPath(name string) string {
+	return "./providers/" + name + ".yaml"
+}
+
+// validProviderName guards the rule-provider names that end up in the
+// profile (path safety: [a-zA-Z0-9-] only).
+func validProviderName(p string) error {
+	if p == "" {
+		return fmt.Errorf("empty provider name")
+	}
+	for _, r := range p {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-':
+		default:
+			return fmt.Errorf("only [a-zA-Z0-9-] allowed")
+		}
+	}
+	return nil
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // targetDetail explains why a target did not resolve (for the Problems

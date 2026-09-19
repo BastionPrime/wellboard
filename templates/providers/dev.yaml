@@ -1,0 +1,21 @@
+# Local fallback rule-provider list for the "Разработка" template (FR-5.4).
+# Honest subset of runetfreedom geosite GITHUB/GITLAB/DOCKER/NPMJS/
+# PYTHON/HUGGINGFACE.
+# Source: parsed from runetfreedom geosite.dat release 2026-09-19.
+payload:
+  - github.com
+  - github.io
+  - githubusercontent.com
+  - githubassets.com
+  - ghcr.io
+  - gitlab.com
+  - gitlab.io
+  - docker.com
+  - docker.io
+  - npmjs.com
+  - npmjs.org
+  - pypi.org
+  - pypi.io
+  - pythonhosted.org
+  - huggingface.co
+  - hf.co

@@ -1,0 +1,30 @@
+# Local fallback rule-provider list for the "Стриминги" template (FR-5.4).
+# Honest, hand-picked subset of runetfreedom geosite YOUTUBE/NETFLIX/
+# TWITCH/SPOTIFY/DISNEY/HBO (primary domains only, no CDN tails) — a
+# safety net when geodata is unavailable, NOT a replacement.
+# Source: parsed from runetfreedom geosite.dat release 2026-09-19.
+payload:
+  - youtube.com
+  - youtu.be
+  - ytimg.com
+  - youtube-nocookie.com
+  - netflix.com
+  - nflximg.net
+  - nflxvideo.net
+  - nflxext.com
+  - fast.com
+  - twitch.tv
+  - ttvnw.net
+  - jtvnw.net
+  - live-video.net
+  - twitchcdn.net
+  - spotify.com
+  - scdn.co
+  - pscdn.co
+  - spotifycdn.net
+  - disneyplus.com
+  - disney.com
+  - bamgrid.com
+  - hbo.com
+  - max.com
+  - hbomax.com

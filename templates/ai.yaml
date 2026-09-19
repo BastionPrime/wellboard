@@ -1,0 +1,12 @@
+id: ai
+name: "AI-сервисы"
+description: "OpenAI/ChatGPT, Anthropic/Claude, Google Gemini, Perplexity, GitHub Copilot."
+typical_target: group
+conditions:
+  - {type: geosite, value: OPENAI}
+  - {type: geosite, value: ANTHROPIC}
+  - {type: geosite, value: GOOGLE-GEMINI}
+  - {type: geosite, value: PERPLEXITY}
+  - {type: geosite, value: GITHUB-COPILOT}
+providers:
+  - ai

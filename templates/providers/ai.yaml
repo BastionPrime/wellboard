@@ -1,0 +1,19 @@
+# Local fallback rule-provider list for the "AI-сервисы" template (FR-5.4).
+# Honest subset of runetfreedom geosite OPENAI/ANTHROPIC/GOOGLE-GEMINI/
+# PERPLEXITY/GITHUB-COPILOT.
+# Source: parsed from runetfreedom geosite.dat release 2026-09-19.
+payload:
+  - openai.com
+  - chatgpt.com
+  - chat.com
+  - oaistatic.com
+  - oaiusercontent.com
+  - sora.com
+  - anthropic.com
+  - claude.ai
+  - claude.com
+  - gemini.google.com
+  - perplexity.ai
+  - perplexity.com
+  - pplx.ai
+  - githubcopilot.com
