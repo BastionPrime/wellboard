@@ -2,10 +2,14 @@
 /wellboard
 /cmd/wellboard/wellboard
 
+# Dev-mode mihomo binary fetched by scripts/fetch-mihomo.sh (never commit)
+/bin/
+
 # Go module / cache pollution (docker builds mount the repo)
 go.sum.bak
 gocache/
 *.log
+coverage.cov
 
 # Editors / OS
 .idea/

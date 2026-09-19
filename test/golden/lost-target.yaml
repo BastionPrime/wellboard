@@ -1,0 +1,3 @@
+ERROR
+wellboard: profile generation failed:
+  route rt_1 (server srv_gone not found, disabled or stale): target lost
