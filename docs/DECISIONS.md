@@ -289,6 +289,64 @@ Phase 3 design decisions:
   chains DIRECT (P2), (d) the /rules table contains the ads + streaming
   RuleSet providers. 10/10 green runs after the P3 retry fix.
 
+## Phase 4 decisions
+
+- **D12 — Frontend stack.** `web/` is a Vite + Vue 3 + TypeScript +
+  Pinia SPA (initial TZ 5.2). Runtime deps are exactly `vue`, `pinia`,
+  `vue-router`; dev deps `vite`, `@vitejs/plugin-vue`, `typescript`,
+  `vitest`, `vue-tsc`. No UI component library and no CSS framework —
+  scoped component CSS, all assets in the bundle (no external CDNs,
+  NFR). Built on the host with node 20.19.2 / npm 9.2.0.
+- **D13 — Embedded dist is committed.** `web/dist` is committed to git
+  (≈145 KB raw, ≈56 KB gzip: 1 index.html + 16 hashed assets) and
+  embedded into the Go binary via `//go:embed all:dist` in
+  `web/embed.go`, package `web`. Rationale: the build host for Go runs
+  in docker without a Node toolchain, the bundle is small and stable,
+  and `wellboard --dev` (and the phase 6 package) must serve the SPA
+  with zero extra steps. Rebuild with `cd web && npm run build`
+  (type-checked by `vue-tsc`). `node_modules/` stays ignored. SPA uses
+  hash routing (`createWebHashHistory`), so no server-side fallback
+  route is needed; `/` and unknown paths serve `index.html`.
+- **D14 — Honest API surface.** The SPA calls only endpoints that exist
+  in `internal/api/api.go` (state/sources/servers/groups/routes/
+  templates/lan-devices/settings/profile + health). The phase 3 API has
+  no "refresh subscription now" and no per-server delay-test endpoint;
+  the UI shows scheduler-measured values and states this in
+  `servers.delayTestNote` / `sources.refreshNote`. The first-run wizard
+  is a simplified 3-step flow (subscription → default policy → first
+  template) with no client-side URL validation — the server is the
+  validator; the wizard hint says so.
+- **D15 — i18n.** Homegrown minimal i18n (`web/src/i18n.ts`): flat
+  ru/en JSON dictionaries + `{param}` substitution, no i18n library
+  (dependency policy). Locale comes from `GET /api/v1/settings` (`ru`
+  default, decision Q11); the header toggle PATCHes `settings.lang`.
+- **D16 — Review follow-up (phase 4 fix): closing the UI gaps.**
+  `POST /api/v1/servers` was added to the Go API (api.go
+  `handleServersCreate`): the manual-server form (FR-1.3) POSTs pasted
+  share links, the handler runs them through `convert.Links` (the
+  mihomo converter — policy C1/C2, no hand-written parser) and merges
+  the proxies into the built-in manual source (created on first use).
+  The route form (FR-4.1-4.3/4.7) is a single Vue form — POST create /
+  PATCH edit — with condition rows (type+value, src-device picks from
+  `GET /lan-devices` and offers `POST /lan-devices/static`; the dev-stub
+  `{"status":"simulated","detail":…}` answer is surfaced verbatim,
+  FR-4.4). The Groups screen (TZ §7 phase 4 screen list, "Группы")
+  does create (name+type+members from the pool) and delete; group
+  EDIT via PATCH stays server-only for now — members change by
+  recreating the group (accepted: the API contract is create/patch/
+  delete, the UI ships create+delete in v1).
+- **D17 — Logs/diagnostics screen is an honest Phase-5 stub.**
+  FR-9.2 (app + nikki/mihomo logs) and FR-9.4 ("check nikki / check
+  mihomo API / check geodata") have NO backend endpoints in phases 0-4
+  (`internal/api/api.go` has no GET /logs or diagnostics routes), and
+  the TZ itself schedules the monitoring surface for Phase 5 (§7
+  "Фаза 5 — Мониторинг и применение с откатом", which owns validate →
+  apply → health → rollback and the mihomo API integration). The
+  LogsView therefore renders an explicit "arrives in Phase 5" notice
+  listing exactly what is deferred — no dead buttons. Dashboard
+  already covers the operational visibility available today (service
+  health, counters, per-source errors, quotas and the FR-7.3 announce).
+
 ## Risks
 
 - **RK1.** `nikki.mixin.api_secret` is a 6-digit pseudo-random number

@@ -11,6 +11,11 @@ gocache/
 *.log
 coverage.cov
 
+# Frontend (web/): node_modules and Vite caches are never committed.
+# dist/ IS committed (DECISIONS D13: embedded into the Go binary).
+/web/node_modules/
+/web/.vite/
+
 # Editors / OS
 .idea/
 .vscode/

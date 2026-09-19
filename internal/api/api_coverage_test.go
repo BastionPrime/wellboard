@@ -116,6 +116,82 @@ func TestListEndpoints(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// Manual server creation (FR-1.3): POST /servers with pasted share links
+// ----------------------------------------------------------------------------
+
+func TestServersCreateManual(t *testing.T) {
+	srv, ts := newSeededServer(t)
+	defer ts.Close()
+
+	// No links → 400.
+	code, body := do(t, ts, "POST", "/api/v1/servers", `{}`)
+	if code != 400 || !strings.Contains(body, "links") {
+		t.Fatalf("empty links: %d %s", code, body)
+	}
+	// Garbage payload → 400 (converter rejects).
+	code, body = do(t, ts, "POST", "/api/v1/servers", `{"links":"not-a-link"}`)
+	if code != 400 || !strings.Contains(body, "parse") {
+		t.Fatalf("bad links: %d %s", code, body)
+	}
+	// Valid ss:// link → 201, server lands in the manual source, stable ID.
+	ss := "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ=@1.2.3.4:8388#ManualSS"
+	code, body = do(t, ts, "POST", "/api/v1/servers", `{"links":"`+ss+`"}`)
+	if code != http.StatusCreated {
+		t.Fatalf("valid create: %d %s", code, body)
+	}
+	if !strings.Contains(body, "ManualSS") {
+		t.Fatalf("created server missing from response: %s", body)
+	}
+	st, err := srv.Store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manualID string
+	var found bool
+	for _, src := range st.Sources {
+		if src.Kind == "manual" && src.Name == "Manual" {
+			manualID = src.ID
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("manual source not created")
+	}
+	var cnt int
+	for _, s := range st.Servers {
+		if s.SourceID == manualID && s.Name == "ManualSS" {
+			cnt++
+		}
+	}
+	if cnt != 1 {
+		t.Fatalf("expected 1 ManualSS server in the manual source, got %d", cnt)
+	}
+	// Re-posting the same link updates in place (no duplicate).
+	code, body = do(t, ts, "POST", "/api/v1/servers", `{"links":"`+ss+`"}`)
+	if code != http.StatusCreated {
+		t.Fatalf("re-create: %d %s", code, body)
+	}
+	st, err = srv.Store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cnt = 0
+	for _, s := range st.Servers {
+		if s.Name == "ManualSS" {
+			cnt++
+		}
+	}
+	if cnt != 1 {
+		t.Fatalf("duplicate server after re-post: %d", cnt)
+	}
+	// Unknown JSON field rejected.
+	code, _ = do(t, ts, "POST", "/api/v1/servers", `{"links":"x","nope":1}`)
+	if code != 400 {
+		t.Fatalf("unknown field: %d", code)
+	}
+}
+
+// -----------------------------------------------------------------------------
 // Source PATCH branches
 // -----------------------------------------------------------------------------
 
