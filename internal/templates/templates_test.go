@@ -74,6 +74,9 @@ func TestLoadValidation(t *testing.T) {
 		{"bad provider name (path escape)", map[string]string{
 			"a.yaml": "id: a\nname: A\nproviders: [\"../evil\"]\n",
 		}},
+		{"provider without payload file", map[string]string{
+			"a.yaml": "id: a\nname: A\nproviders: [\"ghost\"]\n",
+		}},
 		{"empty dir", map[string]string{
 			"providers/keep.yaml": "payload: []\n",
 		}},
@@ -100,9 +103,12 @@ func TestLoadDefaults(t *testing.T) {
 
 func TestGetAndProviderNames(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
-		"one.yaml":   "id: one\nname: One\ntypical_target: group\nproviders: [a, b]\n",
-		"two.yaml":   "id: two\nname: Two\nproviders: [b, c]\n",
-		"three.yaml": "id: three\nname: Three\n",
+		"one.yaml":         "id: one\nname: One\ntypical_target: group\nproviders: [a, b]\n",
+		"two.yaml":         "id: two\nname: Two\nproviders: [b, c]\n",
+		"three.yaml":       "id: three\nname: Three\n",
+		"providers/a.yaml": "payload: []\n",
+		"providers/b.yaml": "payload: []\n",
+		"providers/c.yaml": "payload: []\n",
 	})
 	cat, err := Load(dir)
 	if err != nil {

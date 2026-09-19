@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -358,7 +359,7 @@ func (s *Server) handleSourceDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// FR-1.5: report which routes/groups lose their target BEFORE deleting.
-	affected := routesTargeting(st, id, nil)
+	affected := routesTargeting(st, id)
 	if len(affected) > 0 {
 		writeJSON(w, http.StatusConflict, map[string]any{
 			"error":  "source has routes depending on it; delete or reassign them first",
@@ -432,7 +433,7 @@ func (s *Server) handleServerDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}
-	if affected := routesTargeting(st, id, nil); len(affected) > 0 {
+	if affected := routesTargeting(st, id); len(affected) > 0 {
 		writeJSON(w, http.StatusConflict, map[string]any{
 			"error":  "server is a route target; delete or reassign those routes first",
 			"routes": affected,
@@ -604,7 +605,7 @@ func (s *Server) handleGroupDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
 		return
 	}
-	if affected := routesTargeting(st, id, nil); len(affected) > 0 {
+	if affected := routesTargeting(st, id); len(affected) > 0 {
 		writeJSON(w, http.StatusConflict, map[string]any{
 			"error":  "group is a route target; delete or reassign those routes first",
 			"routes": affected,
@@ -640,7 +641,11 @@ type routeIn struct {
 	Providers     []string               `json:"providers"`
 }
 
-func validateRouteIn(st *model.State, in routeIn) error {
+// validateRouteIn checks the route payload before it is stored.
+// Provider references are checked against the catalog's known set when
+// available (unknown provider → 400 naming it, review follow-up);
+// without a catalog the generator-time check still guards /profile.
+func validateRouteIn(st *model.State, in routeIn, knownProviders map[string]bool) error {
 	if in.Name == "" {
 		return httpErr(http.StatusBadRequest, "name is required")
 	}
@@ -688,6 +693,10 @@ func validateRouteIn(st *model.State, in routeIn) error {
 			default:
 				return httpErr(http.StatusBadRequest, "bad provider name %q", p)
 			}
+		}
+		if knownProviders != nil && !knownProviders[p] {
+			return httpErr(http.StatusBadRequest,
+				"provider %q is not in the template catalog (known: %s)", p, knownProviderList(knownProviders))
 		}
 	}
 	if in.Target == nil {
@@ -747,6 +756,17 @@ func (s *Server) handleRouteGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
 }
 
+// knownProviderList renders the sorted known provider names for error
+// messages.
+func knownProviderList(m map[string]bool) string {
+	names := make([]string, 0, len(m))
+	for n := range m {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
 func (s *Server) handleRoutesCreate(w http.ResponseWriter, r *http.Request) {
 	var in routeIn
 	if err := decodeStrict(r, &in, 0); err != nil {
@@ -759,7 +779,7 @@ func (s *Server) handleRoutesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.unlock()
-	if err := validateRouteIn(st, in); err != nil {
+	if err := validateRouteIn(st, in, s.knownProviders()); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -850,7 +870,7 @@ func (s *Server) handleRoutePatch(w http.ResponseWriter, r *http.Request) {
 		Name: rt.Name, Conditions: rt.Conditions, Target: &rt.Target,
 		Providers: rt.Providers, OnUnavailable: &rt.OnUnavailable,
 	}
-	if err := validateRouteIn(st, merged); err != nil {
+	if err := validateRouteIn(st, merged, s.knownProviders()); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -1128,7 +1148,8 @@ func (s *Server) handleSettingsPatch(w http.ResponseWriter, r *http.Request) {
 
 // handleProfilePreview renders the current state as the generated
 // mihomo profile (read-only, for the UI debug view). Generator
-// *Problems (lost targets) surface as 409 with the problem list.
+// *Problems (lost targets, unknown providers) surface as 409 with the
+// problem list.
 func (s *Server) handleProfilePreview(w http.ResponseWriter, r *http.Request) {
 	st, err := s.load()
 	if err != nil {
@@ -1136,7 +1157,7 @@ func (s *Server) handleProfilePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.unlock()
-	out, err := generator.Generate(st)
+	out, err := generator.GenerateWithProviders(st, s.knownProviders())
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1144,6 +1165,24 @@ func (s *Server) handleProfilePreview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/yaml")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(out)
+}
+
+// knownProviders returns the set of provider names with a local payload
+// file in the loaded template catalog (nil = check disabled, catalog
+// unavailable in dev mode). Route provider references are validated
+// against this set during generation (review follow-up: unknown
+// provider must surface, not silently 200).
+func (s *Server) knownProviders() map[string]bool {
+	if s.Catalog == nil {
+		return nil
+	}
+	m := make(map[string]bool, len(s.Catalog.Templates))
+	for _, tpl := range s.Catalog.Templates {
+		for _, p := range tpl.Providers {
+			m[p] = true
+		}
+	}
+	return m
 }
 
 // ----------------------------------------------------------------------------
@@ -1185,9 +1224,9 @@ func existsGroup(st *model.State, id string) bool {
 	return false
 }
 
-// routesTargeting returns route names+ids whose target id equals targetID
-// (nil group check skipped). Used for FR-1.5 delete guards.
-func routesTargeting(st *model.State, targetID string, _ []string) []string {
+// routesTargeting returns route ids+names whose target id equals targetID.
+// Used for FR-1.5 delete guards.
+func routesTargeting(st *model.State, targetID string) []string {
 	var out []string
 	for _, rt := range st.Routes {
 		if rt.Target.ID == targetID && rt.Target.ID != "" {
