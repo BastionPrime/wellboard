@@ -13,7 +13,7 @@ func TestNormalizeDeep(t *testing.T) {
 	in := map[string]any{
 		"port":   float64(443),
 		"ratio":  1.5,
-		"big":    2e16,                    // non-integral magnitude: stays float
+		"big":    2e16, // non-integral magnitude: stays float
 		"nested": map[string]any{"inner": float64(8)},
 		"list":   []any{float64(1), "two", nil},
 	}
@@ -59,9 +59,9 @@ func TestConditionRuleErrors(t *testing.T) {
 // mihomo rule prefix and geosite flag.
 func TestConditionRuleHappyPaths(t *testing.T) {
 	cases := []struct {
-		cond   model.RouteCondition
-		line   string
-		isGeo  bool
+		cond  model.RouteCondition
+		line  string
+		isGeo bool
 	}{
 		{model.RouteCondition{Type: model.CondDomain, Value: "a.com"}, "DOMAIN,a.com", false},
 		{model.RouteCondition{Type: model.CondDomainSuffix, Value: "b.com"}, "DOMAIN-SUFFIX,b.com", false},
