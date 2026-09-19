@@ -22,6 +22,7 @@ import (
 	"github.com/wellboard/wellboard/internal/model"
 	"github.com/wellboard/wellboard/internal/store"
 	"github.com/wellboard/wellboard/internal/templates"
+	"github.com/wellboard/wellboard/web"
 )
 
 // version is the reported application version. It defaults to "dev" and is
@@ -98,6 +99,11 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", api.HealthHandler(version))
 	srv.Register(mux)
+	// SPA (phase 4): the embedded Vue bundle is served at / in dev mode
+	// (web/embed.go, DECISIONS D13). In prod the UI is served from LuCI
+	// (phase 6); serving it unconditionally is harmless and keeps the
+	// binary self-contained for testing.
+	mux.Handle("/", web.SPAHandler())
 
 	httpSrv := &http.Server{
 		Addr:              addr,

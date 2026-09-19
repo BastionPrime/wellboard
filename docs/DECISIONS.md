@@ -289,6 +289,38 @@ Phase 3 design decisions:
   chains DIRECT (P2), (d) the /rules table contains the ads + streaming
   RuleSet providers. 10/10 green runs after the P3 retry fix.
 
+## Phase 4 decisions
+
+- **D12 — Frontend stack.** `web/` is a Vite + Vue 3 + TypeScript +
+  Pinia SPA (initial TZ 5.2). Runtime deps are exactly `vue`, `pinia`,
+  `vue-router`; dev deps `vite`, `@vitejs/plugin-vue`, `typescript`,
+  `vitest`, `vue-tsc`. No UI component library and no CSS framework —
+  scoped component CSS, all assets in the bundle (no external CDNs,
+  NFR). Built on the host with node 20.19.2 / npm 9.2.0.
+- **D13 — Embedded dist is committed.** `web/dist` is committed to git
+  (≈145 KB raw, ≈56 KB gzip: 1 index.html + 16 hashed assets) and
+  embedded into the Go binary via `//go:embed all:dist` in
+  `web/embed.go`, package `web`. Rationale: the build host for Go runs
+  in docker without a Node toolchain, the bundle is small and stable,
+  and `wellboard --dev` (and the phase 6 package) must serve the SPA
+  with zero extra steps. Rebuild with `cd web && npm run build`
+  (type-checked by `vue-tsc`). `node_modules/` stays ignored. SPA uses
+  hash routing (`createWebHashHistory`), so no server-side fallback
+  route is needed; `/` and unknown paths serve `index.html`.
+- **D14 — Honest API surface.** The SPA calls only endpoints that exist
+  in `internal/api/api.go` (state/sources/servers/groups/routes/
+  templates/lan-devices/settings/profile + health). The phase 3 API has
+  no "refresh subscription now" and no per-server delay-test endpoint;
+  the UI shows scheduler-measured values and states this in
+  `servers.delayTestNote` / `sources.refreshNote`. The first-run wizard
+  is a simplified 3-step flow (subscription → default policy → first
+  template) with no client-side URL validation — the server is the
+  validator; the wizard hint says so.
+- **D15 — i18n.** Homegrown minimal i18n (`web/src/i18n.ts`): flat
+  ru/en JSON dictionaries + `{param}` substitution, no i18n library
+  (dependency policy). Locale comes from `GET /api/v1/settings` (`ru`
+  default, decision Q11); the header toggle PATCHes `settings.lang`.
+
 ## Risks
 
 - **RK1.** `nikki.mixin.api_secret` is a 6-digit pseudo-random number
