@@ -93,6 +93,9 @@ func Load(dir string) (*Catalog, error) {
 			if err := validProviderName(p); err != nil {
 				return nil, fmt.Errorf("templates: %s: provider %q: %w", path, p, err)
 			}
+			if _, err := os.Stat(filepath.Join(dir, "providers", p+".yaml")); err != nil {
+				return nil, fmt.Errorf("templates: %s: provider %q: no payload file %s", path, p, filepath.Join("providers", p+".yaml"))
+			}
 		}
 		cat.Templates = append(cat.Templates, tpl)
 	}

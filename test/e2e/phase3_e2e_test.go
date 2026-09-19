@@ -30,6 +30,20 @@ import (
 
 const mihomoBin = "../../bin/mihomo"
 
+// E2E ports are overridable via env so parallel CI runs don't collide
+// (MIHOMO_MIXED_PORT / MIHOMO_CONTROLLER_PORT; defaults 17890/19090).
+var (
+	mixedPort      = envOrDefault("MIHOMO_MIXED_PORT", "17890")
+	controllerPort = envOrDefault("MIHOMO_CONTROLLER_PORT", "19090")
+)
+
+func envOrDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 func findMihomo(t *testing.T) string {
 	t.Helper()
 	candidates := []string{mihomoBin, os.Getenv("WELLBOARD_MIHOMO")}
@@ -163,14 +177,14 @@ func TestPhase3E2E(t *testing.T) {
 	// 4. Wrap the profile in a runnable config: transport comes from
 	// nikki normally; for the e2e we add mixed-port + external-controller
 	// (the TZ's dev-stand model: DryRun + local mihomo).
-	full := "mixed-port: 17890\n" +
-		"external-controller: 127.0.0.1:19090\n" +
+	full := "mixed-port: " + mixedPort + "\n" +
+		"external-controller: 127.0.0.1:" + controllerPort + "\n" +
 		"log-level: info\n" +
 		string(out)
 	fullPath := filepath.Join(dir, "full.yaml")
 	writeFile(t, fullPath, full)
 
-	apiURL := "http://127.0.0.1:19090"
+	apiURL := "http://127.0.0.1:" + controllerPort
 	proc := exec.Command(bin, "-d", dir, "-f", fullPath)
 	logFile := filepath.Join(dir, "mihomo.log")
 	logF, err := os.Create(logFile)
@@ -198,7 +212,7 @@ func TestPhase3E2E(t *testing.T) {
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy: func(*http.Request) (*url.URL, error) {
-					return url.Parse("http://127.0.0.1:17890")
+					return url.Parse("http://127.0.0.1:" + mixedPort)
 				},
 			},
 			Timeout: 8 * time.Second,
@@ -290,7 +304,7 @@ func TestPhase3E2E(t *testing.T) {
 		client := &http.Client{
 			Timeout: 30 * time.Second,
 			Transport: &http.Transport{
-				Proxy: func(*http.Request) (*url.URL, error) { return url.Parse("http://127.0.0.1:17890") },
+				Proxy: func(*http.Request) (*url.URL, error) { return url.Parse("http://127.0.0.1:" + mixedPort) },
 			},
 		}
 		req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+origin.port+"/held", nil)

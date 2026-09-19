@@ -144,7 +144,11 @@ func GenerateWithProviders(st *model.State, known map[string]bool) (out []byte, 
 		}
 		if len(missing) > 0 {
 			sort.Strings(missing)
-			return nil, fmt.Errorf("generator: no local payload for provider(s) %v", missing)
+			// Reported as *Problems (not a plain error) so the API maps
+			// it to 409 with the offending provider names (FR-5.4
+			// referential conflict, same class as lost targets).
+			return nil, &Problems{Invalid: []string{fmt.Sprintf(
+				"no local payload for provider(s) %v (routes referencing them must be fixed or the provider shipped)", missing)}}
 		}
 	}
 	out, err = marshalProfile(doc)

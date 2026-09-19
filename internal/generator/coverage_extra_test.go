@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -236,5 +237,46 @@ func TestDefaultPolicyTargetVariants(t *testing.T) {
 	}
 	if !strings.Contains(string(out2), "MATCH,rt:default") {
 		t.Errorf("reject default variant missing MATCH:\n%s", out2)
+	}
+}
+
+// TestGenerateWithProvidersMissing: a route referencing a provider that
+// has no local payload is reported as *Problems (so the API maps it to
+// 409 with the name), not a plain error (which would 500).
+func TestGenerateWithProvidersMissing(t *testing.T) {
+	st := baseState()
+	st.Servers = []model.Server{mkServer("srv_1", "src_manual", "A", "socks5", 443)}
+	st.Routes = []model.Route{{
+		ID: "rt_p", Enabled: true, Order: 5,
+		Conditions: []model.RouteCondition{{Type: model.CondDomain, Value: "x.com"}},
+		Target:     model.Target{Type: model.TargetDirect},
+		Providers:  []string{"bogus"},
+	}}
+	_, err := GenerateWithProviders(st, map[string]bool{"ads": true})
+	if err == nil {
+		t.Fatal("missing provider must fail generation")
+	}
+	var prob *Problems
+	if !errors.As(err, &prob) || len(prob.Invalid) == 0 {
+		t.Fatalf("want *Problems, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "bogus") {
+		t.Fatalf("error must name the missing provider: %v", err)
+	}
+
+	// Known provider passes; nil known skips the check entirely.
+	st2 := baseState()
+	st2.Servers = st.Servers
+	st2.Routes = []model.Route{{
+		ID: "rt_p", Enabled: true, Order: 5,
+		Conditions: []model.RouteCondition{{Type: model.CondDomain, Value: "x.com"}},
+		Target:     model.Target{Type: model.TargetDirect},
+		Providers:  []string{"ads"},
+	}}
+	if _, err := GenerateWithProviders(st2, map[string]bool{"ads": true}); err != nil {
+		t.Fatalf("known provider must pass: %v", err)
+	}
+	if _, err := GenerateWithProviders(st2, nil); err != nil {
+		t.Fatalf("nil known must skip the check: %v", err)
 	}
 }

@@ -460,6 +460,86 @@ func TestSettingsPatch(t *testing.T) {
 }
 
 // ----------------------------------------------------------------------------
+// Route provider validation (review follow-up OPE-2271 phase 3)
+// ----------------------------------------------------------------------------
+
+// TestRouteProvidersValidatedAgainstCatalog: a route referencing a
+// provider that is not in the template catalog must be rejected at
+// write time (400 naming the provider), and — for state written
+// through other paths (store migrations, older versions) — the
+// profile preview must 409 with the provider name, never silently
+// render a profile pointing at a missing payload file.
+func TestRouteProvidersValidatedAgainstCatalog(t *testing.T) {
+	srv, ts := newTestServer(t)
+	defer ts.Close()
+	addServerDirect(t, srv, "srv_1")
+
+	// POST /routes with an unknown provider → 400 naming it.
+	code, body := do(t, ts, "POST", "/api/v1/routes", `{
+		"name":"Bogus",
+		"conditions":[{"type":"domain","value":"b.com"}],
+		"providers":["bogus"],
+		"target":{"type":"direct"}
+	}`)
+	if code != 400 || !strings.Contains(body, "bogus") {
+		t.Fatalf("unknown provider on create must 400 naming it: %d %s", code, body)
+	}
+
+	// Create a valid route, then PATCH it with a bogus provider → 400.
+	code, body = do(t, ts, "POST", "/api/v1/routes", `{
+		"name":"Good",
+		"conditions":[{"type":"domain","value":"g.com"}],
+		"target":{"type":"server","id":"srv_1"}
+	}`)
+	if code != 201 {
+		t.Fatalf("valid route create: %d %s", code, body)
+	}
+	rt := model.Route{}
+	_ = json.Unmarshal([]byte(body), &rt)
+
+	code, body = do(t, ts, "PATCH", "/api/v1/routes/"+rt.ID, `{
+		"name":"Good",
+		"conditions":[{"type":"domain","value":"g.com"}],
+		"providers":["bogus"],
+		"target":{"type":"server","id":"srv_1"}
+	}`)
+	if code != 400 || !strings.Contains(body, "bogus") {
+		t.Fatalf("PATCH with unknown provider must 400 naming it: %d %s", code, body)
+	}
+
+	// Valid provider (ads, shipped payload) → 201/200.
+	code, _ = do(t, ts, "PATCH", "/api/v1/routes/"+rt.ID, `{
+		"name":"Good",
+		"conditions":[{"type":"domain","value":"g.com"}],
+		"providers":["ads"],
+		"target":{"type":"server","id":"srv_1"}
+	}`)
+	if code != 200 {
+		t.Fatalf("known provider must pass: %d", code)
+	}
+
+	// Belt and braces: even if a bogus provider lands in the store
+	// (e.g. written by an older build), /profile must 409 with the
+	// provider named — not 500, not a silent 200.
+	st, _ := srv.Store.Load()
+	for i := range st.Routes {
+		if st.Routes[i].ID == rt.ID {
+			st.Routes[i].Providers = []string{"bogus"}
+		}
+	}
+	_ = srv.Store.Save(st)
+	code, body = do(t, ts, "GET", "/api/v1/profile", "")
+	if code != 409 || !strings.Contains(body, "bogus") {
+		t.Fatalf("/profile with unknown provider must 409 naming it: %d %s", code, body)
+	}
+	var resp map[string]any
+	_ = json.Unmarshal([]byte(body), &resp)
+	if probs, ok := resp["problems"].([]any); !ok || len(probs) == 0 {
+		t.Fatalf("409 body must carry a problems list: %s", body)
+	}
+}
+
+// ----------------------------------------------------------------------------
 // Profile preview + generator error mapping (FR-4.8 → 409)
 // ----------------------------------------------------------------------------
 
