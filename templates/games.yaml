@@ -1,0 +1,10 @@
+id: games
+name: "Игры"
+description: "Steam, Epic Games, Xbox, PlayStation, Riot. Часто играют напрямую ради пинга."
+typical_target: direct
+conditions:
+  - {type: geosite, value: STEAM}
+  - {type: geosite, value: EPICGAMES}
+  - {type: geosite, value: XBOX}
+  - {type: geosite, value: PLAYSTATION}
+  - {type: geosite, value: RIOT}

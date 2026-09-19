@@ -1,0 +1,7 @@
+id: torrents
+name: "Торренты — напрямую"
+description: "Публичные трекеры (применяется ограниченно: матч по доменам трекеров, по процессу нельзя)."
+typical_target: direct
+conditions:
+  - {type: geosite, value: CATEGORY-PUBLIC-TRACKER}
+  - {type: geosite, value: RUTRACKER}

@@ -85,6 +85,8 @@ func TestSchedulerTickerFires(t *testing.T) {
 	}
 
 	// Manual rounds work while running (the API manual-update path).
+	// UpdateNow is FORCED (review follow-up B2): it must fetch even right
+	// after a scheduled round recorded a fresh LastUpdate.
 	if _, err := s.UpdateNow(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -96,8 +98,9 @@ func TestSchedulerTickerFires(t *testing.T) {
 	// does not depend on the 1-minute clamp.
 	before := f.calls.Load()
 	s.round(ctx)
-	if f.calls.Load() != before+1 {
-		t.Fatalf("round must trigger an update: %d → %d", before, f.calls.Load())
+	if f.calls.Load() != before {
+		t.Fatalf("scheduled round must respect the per-source interval gate (not yet due): %d → %d",
+			before, f.calls.Load())
 	}
 	if !strings.Contains(buf.String(), "update round ok") {
 		t.Fatalf("logger must report the round: %q", buf.String())
@@ -105,6 +108,36 @@ func TestSchedulerTickerFires(t *testing.T) {
 	cancel()
 	s.Stop()
 	s.Stop() // double stop must be safe
+}
+
+// TestSchedulerCadenceGateNotDue is the regression test for review
+// follow-up B2: a source with a 12h interval and a fresh LastUpdate must
+// NOT be fetched by a scheduled round (round), while the manual button
+// (UpdateNow) still refreshes it immediately.
+func TestSchedulerCadenceGateNotDue(t *testing.T) {
+	f := &countingFetcher{}
+	st := testState()
+	st.Sources[0].UpdateIntervalSec = 43200 // 12h
+	st.Sources[0].LastUpdate = time.Now().UTC().Format(time.RFC3339)
+	s := New(newUpdater(f, st), time.Hour)
+
+	// Three scheduled ticks in a row: zero fetches expected.
+	for i := 0; i < 3; i++ {
+		if _, err := s.Updater.Update(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := f.calls.Load(); got != 0 {
+		t.Fatalf("scheduled rounds must skip a not-due source, got %d fetches", got)
+	}
+
+	// Manual update forces the refresh.
+	if _, err := s.UpdateNow(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.calls.Load(); got != 1 {
+		t.Fatalf("manual update must force a fetch, got %d", got)
+	}
 }
 
 func TestSchedulerStartIdempotent(t *testing.T) {

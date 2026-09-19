@@ -1,0 +1,28 @@
+# Local fallback rule-provider list for the "Реклама и трекеры — блок"
+# template (FR-5.4). The full CATEGORY-ADS-ALL holds ~149k domains — far
+# too big to vendor honestly; this is a small, verifiable ad/tracker
+# core assembled from well-known public blocklist entries, NOT a
+# fabricated excerpt of CATEGORY-ADS-ALL.
+payload:
+  - doubleclick.net
+  - googleadservices.com
+  - googlesyndication.com
+  - googletagmanager.com
+  - google-analytics.com
+  - adservice.google.com
+  - ads.youtube.com
+  - analytics.tiktok.com
+  - graph.whatsapp.com
+  - ads-twitter.com
+  - static.ads-twitter.com
+  - ads.facebook.com
+  - connect.facebook.net
+  - scorecardresearch.com
+  - quantserve.com
+  - adnxs.com
+  - adsrvr.org
+  - criteo.com
+  - criteo.net
+  - moatads.com
+  - amplitude.com
+  - hotjar.com

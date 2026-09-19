@@ -1,0 +1,8 @@
+id: ads-block
+name: "Реклама и трекеры — блок"
+description: "Блокирует рекламные домены и трекеры на уровне роутера."
+typical_target: reject
+conditions:
+  - {type: geosite, value: CATEGORY-ADS-ALL}
+providers:
+  - ads

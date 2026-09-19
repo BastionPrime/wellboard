@@ -1,0 +1,11 @@
+id: messengers
+name: "Мессенджеры"
+description: "Telegram, WhatsApp, Signal, Discord."
+typical_target: group
+conditions:
+  - {type: geosite, value: TELEGRAM}
+  - {type: geosite, value: WHATSAPP}
+  - {type: geosite, value: SIGNAL}
+  - {type: geosite, value: DISCORD}
+providers:
+  - messengers

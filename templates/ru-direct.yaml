@@ -1,0 +1,30 @@
+# WellBoard rule templates (FR-5.1, FR-5.3).
+#
+# Each file is one template from the initial TZ Appendix В. Applying a
+# template creates an ordinary route with these conditions and the target
+# chosen by the user at apply time (FR-5.2: the route is then freely
+# editable). Templates ship with the app and are versioned in git.
+#
+# Field reference (see internal/templates):
+#   id            — stable template identifier (URL path segment)
+#   name          — display name (RU)
+#   description   — one-line explanation for the UI
+#   conditions    — list of {type, value} route conditions; geosite
+#                   categories are the UPPERCASE v2fly names verified
+#                   against runetfreedom + MetaCubeX geosite.dat (see
+#                   docs/DECISIONS.md, Phase 3 G-facts)
+#   typical_target — suggested target kind shown in the UI (direct |
+#                   reject | server | group); the user still picks freely
+#   providers     — local fallback rule-provider lists (FR-5.4): used by
+#                   the generator when geodata is unavailable; names map
+#                   to templates/providers/<name>.yaml
+id: ru-direct
+name: "Российские сайты — напрямую"
+description: "RU домены и IP идут напрямую, минуя VPN (обычно политика по умолчанию для RU-роутера)."
+typical_target: direct
+conditions:
+  - {type: geosite, value: CATEGORY-RU}
+  - {type: geosite, value: TLD-RU}
+  - {type: geosite, value: PRIVATE}
+  - {type: geoip, value: RU}
+  - {type: geoip, value: PRIVATE}

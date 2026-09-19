@@ -1,0 +1,13 @@
+id: streaming
+name: "Стриминги"
+description: "YouTube, Netflix, Twitch, Spotify, Disney+, HBO и другие видеосервисы."
+typical_target: group
+conditions:
+  - {type: geosite, value: YOUTUBE}
+  - {type: geosite, value: NETFLIX}
+  - {type: geosite, value: TWITCH}
+  - {type: geosite, value: SPOTIFY}
+  - {type: geosite, value: DISNEY}
+  - {type: geosite, value: HBO}
+providers:
+  - streaming

@@ -218,6 +218,77 @@ Phase 2 design decisions:
   and are re-read by the updater every round — a header-provided
   interval takes effect without a restart.
 
+## Phase 3 decisions and verified facts
+
+Phase 3 = routing REST API (FR-3.3/FR-4/FR-4.4/FR-4.8/FR-4.9), template
+catalog + apply (FR-5), LAN device list (FR-4.4), geodata sources
+(FR-5.4, Q7), e2e with the real mihomo binary. All facts below verified
+2026-09-19 in the dev sandbox (docker `golang:1.23-alpine`, mihomo
+v1.19.31 linux-amd64 from `scripts/fetch-mihomo.sh`).
+
+| # | Fact | How verified |
+|---|------|--------------|
+| P1 | mihomo implements the REJECT policy on the HTTP mixed-port as an in-band HTTP response with status **502** (Bad Gateway), not as a dropped/RESET connection: the proxy accepts the request, matches the REJECT rule, and answers itself. The Go HTTP client sees `502` with no transport error. | e2e run: GET http://doubleclick.net/ through 127.0.0.1:17890 with the ads-block route (GEOSITE,CATEGORY-ADS-ALL + RULE-SET,ads → rt:rt_1 → REJECT) returned 502; /rules showed hitCount=1 on CATEGORY-ADS-ALL |
+| P2 | mihomo's `/connections` metadata for an IP-literal destination has an EMPTY `host` field; the pair to match is `destinationIP` + `destinationPort`. `chains` lists the policy chain, e.g. `["DIRECT","rt:rt_3"]` (innermost first). The `/rules` API reports rule types as `GeoSite`/`RuleSet`/`GeoIP`/`Match` (CamelCase in the API = `RULE-SET` in profile syntax) with the rule argument in `payload` and the target group in `proxy`. | e2e /connections + /rules dumps (v1.19.31) |
+| P3 | mihomo `fallback` groups need their FIRST health-check round to settle; a request matched to a fallback route in the first ~1s after startup can transiently get 502 even for a DIRECT-target route (observed ~1/8 runs; log ends at "Start initial compatible provider rt:rt_3"). Polling/retry at the client is the correct semantics, not a config bug. | 40 e2e runs: intermittent 502 on the ru-direct DIRECT check, always self-healing on retry |
+| P4 | odhcpd `ubus call dhcp ipv4leases` returns MACs as bare 12-hex-digit strings WITHOUT separators (verified in odhcpd src/ubus.c handle_dhcpv4_leases); dnsmasq `/tmp/dhcp.leases` uses colon form. The lan package normalizes both to colon form. | odhcpd source + unit tests over both shapes |
+| P5 | Both geodata sources' geosite.dat parse with the same length-prefixed protobuf scan; all category names used by the 10 shipped templates exist in BOTH runetfreedom and MetaCubeX (table in templates/README.md). `PYPI` does NOT exist in either (PyPI domains live in `PYTHON`). | internal/geodata ParseTags over both shipped .dat files, 2026-09-19 |
+| P6 | runetfreedom `geosite.dat` CATEGORY-ADS-ALL holds ~148k domain records — vendoring an excerpt would be neither complete nor honest; e2e saw "records: 911" only because MetaCubeX's default GeoSite download (fresh `-d` dir) carries a slimmer list. | e2e log (records: 911) + README table for the full count |
+
+Phase 3 design decisions:
+
+- **T1 — REST surface.** `internal/api`: JSON in/out with strict
+  decoding (unknown fields → 400), IDs minted server-side
+  (`sub_/srv_/grp_/rt_`), single mutex serializing load-modify-save
+  cycles, generator `*Problems` → 409 with the problem list,
+  referential guards on delete (route target / group member) → 409
+  naming the dependent objects. `GET /api/v1/profile` renders the
+  generated mihomo YAML (FR-4.9 preview).
+- **T2 — rule-providers are REAL file providers.** The generator emits
+  one `type: file, behavior: domain, path: ./providers/<name>.yaml`
+  entry per provider referenced by routes (sorted), a `RULE-SET,<name>`
+  line after the route's explicit conditions, and `GenerateWithProviders`
+  rejects providers without a payload file (409-class error). Providers
+  ship in `templates/providers/*.yaml` (14–25 domains each, honest
+  sizes; see T3). mihomo does NOT read provider files during `-t`
+  (Phase 1 M3), so validation order is: validate → materialize → run.
+- **T3 — compact ads list instead of the 149k category.** The ads-block
+  template still carries `GEOSITE,CATEGORY-ADS-ALL` (full power when
+  geodata works), but its fallback provider `ads.yaml` is a small
+  well-known ad/tracker core (doubleclick, googlesyndication, adnxs,
+  criteo, …), NOT an excerpt of CATEGORY-ADS-ALL (~148k entries, P6) —
+  vendoring a fake subset would violate "don't invent facts". The other
+  providers (streaming/messengers/ai/dev) ARE excerpts of the
+  runetfreedom geosite.dat primary domains (parsed 2026-09-19, CDN
+  long-tails dropped).
+- **T4 — 502-as-REJECT (P1).** The e2e and any future UI check treat an
+  mihomo-answered 502 on a REJECT-routed domain as the SUCCESS signal
+  for the block route: the connection was accepted, the rule matched,
+  the forward was refused. A 200 or a transport error would be the
+  failure. Fixed in the e2e comment + assert.
+- **T5 — odhcpd MAC normalization (P4).** `internal/lan` merges the
+  dnsmasq lease file (authoritative; default OpenWrt runs dnsmasq for
+  IPv4) with the ubus odhcpd fallback (usually empty; enriches known
+  devices with the `static` flag). Bare-hex MACs are normalized to
+  colon form; static leases go through UCI
+  (`uci add dhcp host; …; uci commit dhcp`), dev mode returns a
+  documented stub error that the API maps to `200 {"status":"simulated"}`.
+- **T6 — geodata sources + category verification.** `internal/geodata`:
+  runetfreedom (default, Q7) and MetaCubeX download URLs, availability
+  probe (HEAD → 1-byte ranged GET fallback, never a full download), and
+  a v2fly protobuf scanner (`ParseTags`) used to verify that every
+  geosite category referenced by the shipped templates exists in both
+  sources (P5, table in templates/README.md). Settings PATCH validates
+  the geodata name against the two known sources.
+- **T7 — e2e harness.** `test/e2e` (build tag `e2e`, skipped without
+  bin/mihomo): apply ads-block/streaming/ru-direct templates to a state
+  with a loopback socks "VPN", generate, `mihomo -t`, run mihomo with
+  mixed-port + external-controller, then assert: (a) REJECT → 502 (T4),
+  (b) DIRECT via default policy + GEOIP,PRIVATE route → 200 from a local
+  echo origin, (c) a held connection shows up in /connections with
+  chains DIRECT (P2), (d) the /rules table contains the ads + streaming
+  RuleSet providers. 10/10 green runs after the P3 retry fix.
+
 ## Risks
 
 - **RK1.** `nikki.mixin.api_secret` is a 6-digit pseudo-random number

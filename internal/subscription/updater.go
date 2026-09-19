@@ -90,10 +90,23 @@ type UpdateResult struct {
 	Servers map[string]int
 }
 
-// Update runs one update round for all enabled subscription sources.
-// Per-source failures are recorded in the result (and in each source's
-// last_error); only a total store failure returns a non-nil error.
+// Update runs one scheduled update round for all enabled subscription
+// sources. Sources whose per-source interval has not elapsed since their
+// last update are SKIPPED (review follow-up B2 / D8: the scheduler tick
+// refreshes only due sources). Per-source failures are recorded in the
+// result (and in each source's last_error); only a total store failure
+// returns a non-nil error.
 func (u *Updater) Update(ctx context.Context) (*UpdateResult, error) {
+	return u.update(ctx, false)
+}
+
+// UpdateForced runs one full round ignoring the per-source interval gate
+// (the manual "update now" trigger, FR-1.4).
+func (u *Updater) UpdateForced(ctx context.Context) (*UpdateResult, error) {
+	return u.update(ctx, true)
+}
+
+func (u *Updater) update(ctx context.Context, force bool) (*UpdateResult, error) {
 	st, err := u.Store.Load()
 	if err != nil {
 		return nil, fmt.Errorf("subscription: load state: %w", err)
@@ -113,12 +126,17 @@ func (u *Updater) Update(ctx context.Context) (*UpdateResult, error) {
 		if src.Kind != string(model.SourceSubscription) || !src.Enabled || src.URL == "" {
 			continue
 		}
+		// Scheduled cadence gate (B2): skip sources not yet due; manual
+		// rounds (force) and per-source UpdateOne bypass it.
+		if !force && !intervalElapsed(src, now) {
+			continue
+		}
 		body, hdr, err := u.Fetcher.Fetch(ctx, src.URL, hwidVal, dev)
 		if err != nil {
 			st.Sources[i].LastError = errString(err)
 			st.Sources[i].LastUpdate = now.UTC().Format(time.RFC3339)
-			res.Errors[src.ID] = err.Error()
-			u.logf("source %s: fetch failed: %v", src.ID, err)
+			res.Errors[src.ID] = redactError(err)
+			u.logf("source %s: fetch failed: %s", src.ID, redactError(err))
 			dirty = true
 			continue
 		}
@@ -127,8 +145,8 @@ func (u *Updater) Update(ctx context.Context) (*UpdateResult, error) {
 		if perr != nil {
 			st.Sources[i].LastError = errString(perr)
 			st.Sources[i].LastUpdate = now.UTC().Format(time.RFC3339)
-			res.Errors[src.ID] = perr.Error()
-			u.logf("source %s: parse failed: %v", src.ID, perr)
+			res.Errors[src.ID] = redactError(perr)
+			u.logf("source %s: parse failed: %s", src.ID, redactError(perr))
 			dirty = true
 			continue
 		}
@@ -199,7 +217,7 @@ func (u *Updater) UpdateOne(ctx context.Context, sourceID string) (*UpdateResult
 		st.Sources[idx].LastError = errString(ferr)
 		st.Sources[idx].LastUpdate = u.now().UTC().Format(time.RFC3339)
 		_ = u.Store.Save(st)
-		res.Errors[sourceID] = ferr.Error()
+		res.Errors[sourceID] = redactError(ferr)
 		return res, nil
 	}
 	proxies, perr := ParseBody(body)
@@ -207,7 +225,7 @@ func (u *Updater) UpdateOne(ctx context.Context, sourceID string) (*UpdateResult
 		st.Sources[idx].LastError = errString(perr)
 		st.Sources[idx].LastUpdate = u.now().UTC().Format(time.RFC3339)
 		_ = u.Store.Save(st)
-		res.Errors[sourceID] = perr.Error()
+		res.Errors[sourceID] = redactError(perr)
 		return res, nil
 	}
 
@@ -268,9 +286,34 @@ func countLive(st *model.State, sourceID string) int {
 // subscription URLs are secrets — anything that looks like a URL fragment
 // leaking into a network error is redacted to its host.
 func errString(err error) *string {
+	s := redactError(err)
+	return &s
+}
+
+// redactError returns the error text with any URL fragment replaced by the
+// "[url redacted]" marker (guardrail 5 / review follow-up B1: the same
+// redaction that guarded last_error now also guards UpdateResult.Errors
+// and the Log callback, so a secret token can never reach logs or the API
+// surface).
+func redactError(err error) string {
 	s := err.Error()
 	if i := strings.Index(s, "http"); i >= 0 {
 		s = s[:i] + "[url redacted]"
 	}
-	return &s
+	return s
+}
+
+// intervalElapsed reports whether src is due for a scheduled update at
+// time now (review follow-up B2 / D8). A source with no last update or no
+// interval is always due; otherwise the elapsed time since LastUpdate
+// must be ≥ the per-source interval.
+func intervalElapsed(src model.Source, now time.Time) bool {
+	if src.LastUpdate == "" || src.UpdateIntervalSec <= 0 {
+		return true
+	}
+	last, err := time.Parse(time.RFC3339, src.LastUpdate)
+	if err != nil {
+		return true // unreadable timestamp: safer to fetch than to starve
+	}
+	return now.Sub(last) >= time.Duration(src.UpdateIntervalSec)*time.Second
 }

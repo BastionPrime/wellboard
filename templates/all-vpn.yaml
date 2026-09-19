@@ -1,0 +1,5 @@
+id: all-vpn
+name: "Всё остальное через VPN"
+description: "Меняет политику по умолчанию (MATCH): весь непопавший трафик идёт в выбранную цель."
+typical_target: group
+conditions: []

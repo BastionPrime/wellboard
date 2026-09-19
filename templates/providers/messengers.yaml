@@ -1,0 +1,26 @@
+# Local fallback rule-provider list for the "Мессенджеры" template (FR-5.4).
+# Honest subset of runetfreedom geosite TELEGRAM/WHATSAPP/SIGNAL/DISCORD.
+# Source: parsed from runetfreedom geosite.dat release 2026-09-19.
+payload:
+  - telegram.org
+  - t.me
+  - telegram.dog
+  - cdn-telegram.org
+  - telegram-cdn.org
+  - telegra.ph
+  - graph.org
+  - fragment.com
+  - web.telegram.org
+  - whatsapp.com
+  - wa.me
+  - whatsapp.net
+  - signal.org
+  - signal.me
+  - signal.link
+  - signal.group
+  - discord.com
+  - discord.gg
+  - discordapp.com
+  - discordapp.net
+  - discord.media
+  - discord.dev

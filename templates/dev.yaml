@@ -1,0 +1,13 @@
+id: dev
+name: "Разработка"
+description: "GitHub, GitLab, Docker, npm, PyPI, Hugging Face."
+typical_target: group
+conditions:
+  - {type: geosite, value: GITHUB}
+  - {type: geosite, value: GITLAB}
+  - {type: geosite, value: DOCKER}
+  - {type: geosite, value: NPMJS}
+  - {type: geosite, value: PYTHON}
+  - {type: geosite, value: HUGGINGFACE}
+providers:
+  - dev

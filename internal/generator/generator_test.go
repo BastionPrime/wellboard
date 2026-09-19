@@ -55,7 +55,7 @@ func storeDefault() *model.State {
 		Version: 1,
 		Settings: model.Settings{
 			UIPort: 8090, Lang: "ru", Geodata: "runetfreedom",
-			DefaultPolicy: model.Target{Type: model.TargetDirect},
+			DefaultPolicy:        model.Target{Type: model.TargetDirect},
 			DelayTestIntervalSec: 300,
 		},
 	}
@@ -96,8 +96,8 @@ func allScenarios() []scenario {
 			{Type: model.CondGeosite, Value: "youtube"},
 			{Type: model.CondDomainSuffix, Value: "netflix.com"},
 		},
-		Target:         model.Target{Type: model.TargetServer, ID: "srv_9f3"},
-		OnUnavailable:  "block",
+		Target:        model.Target{Type: model.TargetServer, ID: "srv_9f3"},
+		OnUnavailable: "block",
 	}}
 
 	routeDirect := baseState()
