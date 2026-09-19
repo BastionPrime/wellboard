@@ -132,7 +132,7 @@ func TestValidateMissingBinarySkips(t *testing.T) {
 	if err := d.Validate(path); err != nil {
 		t.Fatalf("missing binary should skip, got %v", err)
 	}
-	if !strings.Contains(logs.String(), "binary missing") {
+	if !strings.Contains(logs.String(), "skipping validation") {
 		t.Errorf("missing-binary skip not logged: %q", logs.String())
 	}
 }

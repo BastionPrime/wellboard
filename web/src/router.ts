@@ -11,6 +11,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/routes', component: () => import('./views/RoutesView.vue') },
   { path: '/groups', component: () => import('./views/GroupsView.vue') },
   { path: '/templates', component: () => import('./views/TemplatesView.vue') },
+  { path: '/monitoring', component: () => import('./views/MonitoringView.vue') },
   { path: '/logs', component: () => import('./views/LogsView.vue') },
   { path: '/settings', component: () => import('./views/SettingsView.vue') },
 ]

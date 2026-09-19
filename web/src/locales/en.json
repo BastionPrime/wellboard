@@ -17,7 +17,6 @@
   "common.close": "Close",
   "common.cancel": "Cancel",
   "common.unknown": "unknown",
-
   "nav.dashboard": "Dashboard",
   "nav.sources": "Sources",
   "nav.servers": "Servers",
@@ -26,7 +25,6 @@
   "nav.templates": "Templates",
   "nav.logs": "Logs",
   "nav.settings": "Settings",
-
   "dashboard.title": "Overview",
   "dashboard.health": "Service",
   "dashboard.version": "Version",
@@ -44,7 +42,6 @@
   "dashboard.traffic": "Traffic",
   "dashboard.announce": "Panel announcement",
   "dashboard.partial": "Partial data: some API endpoints unavailable",
-
   "sources.title": "Sources",
   "sources.subtitle": "Subscriptions and manual servers (FR-1)",
   "sources.name": "Name",
@@ -63,7 +60,6 @@
   "sources.refreshNote": "Background refresh is done by the scheduler; the Refresh button re-reads the list.",
   "sources.addFailed": "Add failed: {msg}",
   "sources.never": "never",
-
   "servers.title": "Servers",
   "servers.subtitle": "Unified proxy pool from all sources (FR-3)",
   "servers.search": "Search by name",
@@ -79,7 +75,6 @@
   "servers.staleHint": "Excluded from generation: routes on it report “target lost”",
   "servers.delayTestNote": "Periodic delay testing is done by the scheduler (interval in settings). There is no per-server test endpoint in the API yet — the last measured value is shown.",
   "servers.bySource": "Source: {name}",
-
   "routes.title": "Routes",
   "routes.subtitle": "Rules in application order (FR-4)",
   "routes.noRoutes": "No routes. Apply a template on the Templates tab or create a route.",
@@ -116,7 +111,6 @@
   "routes.lanPinned": "Static lease pinned for {ip}",
   "routes.lanSimulated": "DEV STUB: {detail}",
   "routes.lanPinFailed": "Pin failed: {msg}",
-
   "templates.title": "Templates",
   "templates.subtitle": "Ready-made rule sets (FR-5)",
   "templates.apply": "Apply",
@@ -127,7 +121,6 @@
   "templates.applyFailed": "Apply failed: {msg}",
   "templates.providers": "Providers: {list}",
   "templates.unavailable": "Template catalog unavailable (503)",
-
   "groups.title": "Groups",
   "groups.subtitle": "User proxy groups (FR-3.3)",
   "groups.add": "Create group",
@@ -145,17 +138,12 @@
   "groups.members": "Members",
   "groups.membersHint": "Pool servers and groups; selection order = fallback order.",
   "groups.noPool": "The pool is empty: add a subscription or manual servers first.",
-
   "logs.title": "Logs & diagnostics",
   "logs.subtitle": "Application and nikki/mihomo logs, service checks (FR-9.2/FR-9.4)",
-  "logs.phase5Title": "Arrives in Phase 5",
-  "logs.phase5Text": "The log/diagnostics API (GET /logs, “check nikki”, “check mihomo API access”, “check geodata”) is not implemented yet — it belongs to the monitoring phase (TZ §7, Phase 5). No dead buttons here: the screen goes live together with the endpoints.",
   "logs.item.logs": "View application and nikki/mihomo logs (logread)",
   "logs.item.checkNikki": "Check nikki",
   "logs.item.checkMihomo": "Check mihomo API access",
   "logs.item.checkGeodata": "Check geodata",
-  "logs.hint": "API status, counters and source errors are already on the Dashboard.",
-
   "settings.title": "Settings",
   "settings.subtitle": "Global parameters (FR-9.1)",
   "settings.language": "UI language",
@@ -172,7 +160,6 @@
   "settings.saveFailed": "Save failed: {msg}",
   "settings.profile": "Profile preview (YAML)",
   "settings.profileHint": "Current state generated into a mihomo profile (FR-4.9)",
-
   "wizard.title": "First run",
   "wizard.step": "Step {n} of 3",
   "wizard.step1.title": "Add a subscription",
@@ -197,7 +184,28 @@
   "wizard.applyFailed": "Template apply failed: {msg}",
   "wizard.later": "Run later (data already present)",
   "wizard.hint": "Simplified wizard: 3 steps, no client-side URL validation — the server validates and returns the error if anything is wrong.",
-
   "health.down": "Service unreachable",
-  "health.unknown": "no data"
+  "health.unknown": "no data",
+  "nav.monitoring": "Monitoring",
+  "apply.pending": "Unapplied changes",
+  "apply.applied": "All changes applied",
+  "apply.apply": "Apply",
+  "apply.applying": "Applying…",
+  "apply.applyHint": "Generate the profile, validate (mihomo -t), write and restart with a health check",
+  "apply.rollback": "Roll back",
+  "apply.rollingBack": "Rolling back…",
+  "apply.rollbackHint": "Restore the previous applied profile",
+  "apply.appliedOk": "Profile applied: {name}",
+  "apply.failed": "Apply failed ({stage}): {error}",
+  "monitoring.title": "Monitoring",
+  "monitoring.subtitle": "metacubexd: connections, traffic, core logs (FR-8)",
+  "monitoring.missingTitle": "metacubexd dist not installed",
+  "monitoring.missingText": "The metacubexd monitoring UI has not been fetched to this stand. Run in the repo root:",
+  "monitoring.hint": "The ~8 MB dist is not kept in git (DECISIONS D18). Without it all other tabs work fully.",
+  "logs.diagnTitle": "Diagnostics",
+  "logs.checking": "Checking…",
+  "logs.appTitle": "Application log",
+  "logs.autoRefresh": "Auto-refresh",
+  "logs.unavailable": "Logs unavailable",
+  "logs.empty": "(log is empty)"
 }
