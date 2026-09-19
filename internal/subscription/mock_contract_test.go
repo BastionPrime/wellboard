@@ -342,7 +342,7 @@ func TestEndToEndNetworkFailureKeepsServers(t *testing.T) {
 	if err := stStore.Save(st); err != nil {
 		t.Fatal(err)
 	}
-	res, err := u.Update(context.Background())
+	res, err := u.UpdateForced(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,15 +373,19 @@ func TestEndToEndVanishedServerGoesStale(t *testing.T) {
 
 	c := newClient(base)
 	u := &subscription.Updater{Fetcher: c, Store: stStore, HWID: "ABCDEFGHJKLM0123456"}
-	if _, err := u.Update(context.Background()); err != nil {
-		t.Fatal(err)
+	forced := func() {
+		t.Helper()
+		if _, err := u.UpdateForced(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 	}
+	forced() // seed
 	st, err := stStore.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(st.Servers) != 2 {
-		t.Fatalf("seed failed: %d", len(st.Servers))
+		t.Fatalf("seed failed: %d servers", len(st.Servers))
 	}
 
 	// Simulate the panel dropping NL-2 (fixture /sub2 has only NL-1).
@@ -389,9 +393,7 @@ func TestEndToEndVanishedServerGoesStale(t *testing.T) {
 	if err := stStore.Save(st); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := u.Update(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	forced()
 	st, err = stStore.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -410,9 +412,7 @@ func TestEndToEndVanishedServerGoesStale(t *testing.T) {
 
 	// Two more rounds → the stale server is deleted (5.7.5).
 	for i := 0; i < 2; i++ {
-		if _, err := u.Update(context.Background()); err != nil {
-			t.Fatal(err)
-		}
+		forced()
 	}
 	st, err = stStore.Load()
 	if err != nil {
@@ -462,8 +462,9 @@ func TestEndToEndParseFailureKeepsServers(t *testing.T) {
 
 	c := newClient(base)
 	u := &subscription.Updater{Fetcher: c, Store: stStore, HWID: "ABCDEFGHJKLM0123456"}
-	// First round fails (unknown format).
-	res, err := u.Update(context.Background())
+	// First round fails (unknown format). Forced: this test is a manual
+	// retry, not a scheduled cadence scenario.
+	res, err := u.UpdateForced(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

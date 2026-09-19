@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wellboard/wellboard/internal/hwid"
 	"github.com/wellboard/wellboard/internal/model"
@@ -643,6 +645,120 @@ func TestMihomoPathCandidates(t *testing.T) {
 		got := mihomoPathCandidates(c.in)
 		if len(got) != c.n || got[0] != c.first {
 			t.Errorf("mihomoPathCandidates(%q) = %v, want first %q n=%d", c.in, got, c.first, c.n)
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Review follow-up fixes (B1 redaction, B2 cadence gate)
+// ----------------------------------------------------------------------------
+
+// TestUpdateResultErrorsRedacted (B1): UpdateResult.Errors and the Log
+// callback must never contain the subscription URL — the same errString
+// redaction that guards last_error (guardrail 5).
+func TestUpdateResultErrorsRedacted(t *testing.T) {
+	st := testState()
+	f := &mockFetcher{err: errors.New(`subscription: network: Get "https://panel.example/sub?token=SECRET": dial tcp: refused`)}
+	var logged strings.Builder
+	u := &Updater{
+		Fetcher: f, Store: &fakeStore{st}, HWID: "ABCDEFGHJKLM0123456789",
+		Log: func(format string, args ...any) { fmt.Fprintf(&logged, format, args...) },
+	}
+	res, err := u.Update(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Errors["sub_1"], "SECRET") || strings.Contains(res.Errors["sub_1"], "http") {
+		t.Fatalf("UpdateResult.Errors leaks a URL: %q", res.Errors["sub_1"])
+	}
+	if strings.Contains(logged.String(), "SECRET") || strings.Contains(logged.String(), "http") {
+		t.Fatalf("Log callback leaks a URL: %q", logged.String())
+	}
+	if !strings.Contains(res.Errors["sub_1"], "[url redacted]") {
+		t.Fatalf("redaction marker expected: %q", res.Errors["sub_1"])
+	}
+}
+
+// TestUpdateOneErrorsRedacted (B1): the manual per-source update path gets
+// the same redaction.
+func TestUpdateOneErrorsRedacted(t *testing.T) {
+	st := testState()
+	f := &mockFetcher{err: errors.New(`subscription: network: Get "https://panel.example/sub?token=SECRET": dial tcp: refused`)}
+	u := &Updater{Fetcher: f, Store: &fakeStore{st}, HWID: "ABCDEFGHJKLM0123456789"}
+	res, err := u.UpdateOne(context.Background(), "sub_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Errors["sub_1"], "SECRET") || strings.Contains(res.Errors["sub_1"], "http") {
+		t.Fatalf("UpdateOne result leaks a URL: %q", res.Errors["sub_1"])
+	}
+}
+
+// TestUpdaterSkipsNotDueSource (B2): a scheduled round must skip a source
+// whose per-source interval has not elapsed; a forced round must fetch it.
+func TestUpdaterSkipsNotDueSource(t *testing.T) {
+	st := testState()
+	st.Sources[0].UpdateIntervalSec = 43200
+	st.Sources[0].LastUpdate = time.Now().UTC().Format(time.RFC3339)
+	f := &mockFetcher{body: []byte(yamlBody)}
+	u := &Updater{Fetcher: f, Store: &fakeStore{st}, HWID: "ABCDEFGHJKLM0123456789"}
+
+	// Scheduled: skipped (not due).
+	res, err := u.Update(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.calls != 0 || len(res.Servers) != 0 {
+		t.Fatalf("not-due source must be skipped: calls=%d servers=%v", f.calls, res.Servers)
+	}
+	// Forced: fetched.
+	res, err = u.UpdateForced(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.calls != 1 || res.Servers["sub_1"] != 2 {
+		t.Fatalf("forced round must fetch: calls=%d servers=%v", f.calls, res.Servers)
+	}
+}
+
+// TestUpdaterDueAfterInterval (B2): once the interval has elapsed, a
+// scheduled round fetches again.
+func TestUpdaterDueAfterInterval(t *testing.T) {
+	st := testState()
+	st.Sources[0].UpdateIntervalSec = 60
+	st.Sources[0].LastUpdate = time.Now().UTC().Add(-90 * time.Second).Format(time.RFC3339)
+	f := &mockFetcher{body: []byte(yamlBody)}
+	u := &Updater{Fetcher: f, Store: &fakeStore{st}, HWID: "ABCDEFGHJKLM0123456789"}
+	if _, err := u.Update(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.calls != 1 {
+		t.Fatalf("elapsed interval must allow a fetch, got %d", f.calls)
+	}
+}
+
+// TestIntervalElapsed parses the due-gate edge cases.
+func TestIntervalElapsed(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		name     string
+		last     string
+		interval int
+		want     bool
+	}{
+		{"no last update", "", 43200, true},
+		{"no interval", now.Format(time.RFC3339), 0, true},
+		{"garbage timestamp", "not-a-time", 43200, true},
+		{"not due", now.Format(time.RFC3339), 43200, false},
+		{
+			"due (interval passed)",
+			now.Add(-43300 * time.Second).Format(time.RFC3339), 43200, true,
+		},
+	}
+	for _, c := range cases {
+		got := intervalElapsed(model.Source{LastUpdate: c.last, UpdateIntervalSec: c.interval}, now)
+		if got != c.want {
+			t.Errorf("%s: intervalElapsed = %v, want %v", c.name, got, c.want)
 		}
 	}
 }

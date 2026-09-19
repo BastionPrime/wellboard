@@ -38,14 +38,11 @@ type Scheduler struct {
 
 	mu     sync.Mutex
 	stopCh chan struct{}
-	// lastOK maps source ID → last successful update time (bookkeeping
-	// for logs/tests).
-	lastOK map[string]time.Time
 }
 
 // New returns a Scheduler around upd with the given tick period.
 func New(upd *subscription.Updater, tick time.Duration) *Scheduler {
-	return &Scheduler{Updater: upd, Tick: tick, lastOK: map[string]time.Time{}}
+	return &Scheduler{Updater: upd, Tick: tick}
 }
 
 // effectiveTick returns the clamped ticker period.
@@ -90,7 +87,8 @@ func (s *Scheduler) Start(ctx context.Context) {
 	}()
 }
 
-// round runs one update pass and logs the outcome.
+// round runs one scheduled update pass (per-source interval gate applies)
+// and logs the outcome.
 func (s *Scheduler) round(ctx context.Context) {
 	res, err := s.Updater.Update(ctx)
 	if err != nil {
@@ -100,20 +98,16 @@ func (s *Scheduler) round(ctx context.Context) {
 	for id, e := range res.Errors {
 		s.logf("scheduler: source %s: %s", id, e)
 	}
-	s.mu.Lock()
-	for id := range res.Servers {
-		s.lastOK[id] = time.Now()
-	}
-	s.mu.Unlock()
 	if len(res.Servers) > 0 {
 		s.logf("scheduler: update round ok: %d source(s)", len(res.Servers))
 	}
 }
 
 // UpdateNow triggers a manual full update round (FR-1.4: update button).
-// It runs synchronously so the caller can report the outcome.
+// It runs synchronously so the caller can report the outcome and bypasses
+// the per-source interval gate — the user asked for a refresh NOW.
 func (s *Scheduler) UpdateNow(ctx context.Context) (*subscription.UpdateResult, error) {
-	return s.Updater.Update(ctx)
+	return s.Updater.UpdateForced(ctx)
 }
 
 // Stop halts the loop. Safe to call multiple times; Start may be called
