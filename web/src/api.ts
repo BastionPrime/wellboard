@@ -98,6 +98,45 @@ export interface Health {
   version: string
 }
 
+// Phase 5: apply flow (FR-6).
+export interface ApplyResult {
+  profile: string
+  ok: boolean
+  stage?: string
+  error?: string
+  rolled_back?: boolean
+  last_good_profile?: string
+  applied_at: string
+}
+
+export interface AppliedRecord {
+  profile: string
+  state_hash: string
+  applied_at: string
+}
+
+export interface Pending {
+  pending: boolean
+  hash: string
+}
+
+// Phase 5: diagnostics (FR-9.4).
+export interface DiagCheck {
+  name: string
+  ok: boolean
+  detail?: string
+  measure?: string
+}
+
+export interface Diagnostics {
+  checks: DiagCheck[]
+}
+
+// Phase 5: logs (FR-9.2).
+export interface Logs {
+  lines: string[]
+}
+
 // APIError is the JSON error body returned by writeError ({error: "..."}).
 export class APIError extends Error {
   status: number

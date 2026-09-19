@@ -5,6 +5,10 @@
 # Dev-mode mihomo binary fetched by scripts/fetch-mihomo.sh (never commit)
 /bin/
 
+# MetaCubeXD dist fetched by scripts/fetch-metacubexd.sh into ui/ —
+# ~8 MB of third-party build artifacts, NOT vendored (DECISIONS D18).
+/ui/metacubexd/
+
 # Go module / cache pollution (docker builds mount the repo)
 go.sum.bak
 gocache/

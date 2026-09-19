@@ -347,6 +347,49 @@ Phase 3 design decisions:
   already covers the operational visibility available today (service
   health, counters, per-source errors, quotas and the FR-7.3 announce).
 
+## Phase 5 decisions
+
+- **D18 — MetaCubeXD not vendored, fetched on demand.** The monitoring
+  SPA (MetaCubeXD v1.273.1) is an ~8 MB third-party build artifact;
+  committing it would bloat the repo and hide its provenance. Instead
+  `scripts/fetch-metacubexd.sh` downloads the release
+  `compressed-dist.tgz` into gitignored `ui/metacubexd/`. The server
+  serves the dist from there when present; without it the monitoring
+  endpoint and the Monitoring tab return/show an honest
+  "run scripts/fetch-metacubexd.sh" notice — no dead UI. The mihomo
+  API proxy requires no extra secret: the same 6-digit
+  `nikki.mixin.api_secret` is used, mihomo binds its REST API to
+  127.0.0.1 only, and WellBoard's proxy endpoint is authenticated
+  like every other WellBoard API route.
+- **D19 — Dev/dry-run parity.** In dry-run (dev) mode there is no auth
+  layer, so the monitoring SPA proxy and endpoints run without auth
+  there; on a real install they sit behind the same auth as the rest
+  of the API. E2E asserts both modes only where they actually differ.
+- **D20 — Apply flow: generate → validate → activate → health →
+  auto-rollback.** `internal/apply` renders the profile, validates it
+  with `mihomo -t` (external `mihomo` binary — the Go API cannot run
+  config checks), writes it via the nikki adapter (WriteProfile), then
+  activates. Health = mihomo REST `/version` answering within 15 s
+  (poll). If validation or health fails, the previous profile is
+  re-activated automatically (auto-rollback) and the API surfaces the
+  original error plus the rollback outcome; a failed rollback is
+  reported, not hidden. A pending-apply list keeps only the newest
+  apply per source. E2E covers: successful apply (mihomo up), apply
+  with a bogus target (rejected by `mihomo -t`), and kill-the-mihomo
+  health failure → auto-rollback → mihomo alive again.
+- **D21 — Monitoring metrics come from the mihomo API.** The
+  monitoring endpoint aggregates mihomo `/traffic`, `/connections`,
+  `/memory` (and proxies) on demand; WellBoard keeps no time-series of
+  its own (MetaCubeXD does live rendering; the Dashboard already has
+  counters). Poll interval and history depth are the SPA's concern.
+- **D22 — Logs and diagnostics.** `internal/applog` is a small
+  in-memory ring buffer of structured log lines (the binary log file
+  stays untouched); `/api/logs` tails that buffer. `/api/diagnostics`
+  runs point checks — nikki adapter reachable, mihomo API answering,
+  geodata present — and returns per-check ok/error, mirroring what the
+  e2e test asserts. LogsView gained the real live tail; the Phase-4
+  "arrives in Phase 5" stub is now fulfilled.
+
 ## Risks
 
 - **RK1.** `nikki.mixin.api_secret` is a 6-digit pseudo-random number

@@ -38,7 +38,8 @@ type Store interface {
 	Save(st *model.State) error
 }
 
-// Server is the Phase 3 API: state CRUD + templates + profile preview.
+// Server is the Phase 3/5 API: state CRUD + templates + profile
+// preview + apply/rollback + logs + diagnostics + monitoring.
 type Server struct {
 	// Store persists the state.
 	Store Store
@@ -48,6 +49,9 @@ type Server struct {
 	lanReader LANReader
 	// lanStatic applies static leases; wired via SetLAN.
 	lanStatic SetStater
+	// monitor carries the Phase 5 wiring (apply/logs/diagnostics/
+	// metacubexd/mihomo proxy); nil fields disable the endpoints.
+	monitor MonitorConfig
 	// mu serializes load-modify-save cycles (single-writer; the store
 	// file is rewritten atomically but read-modify-write must not race).
 	mu sync.Mutex
@@ -102,6 +106,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/settings", s.handleSettingsGet)
 	mux.HandleFunc("PATCH /api/v1/settings", s.handleSettingsPatch)
 	mux.HandleFunc("GET /api/v1/profile", s.handleProfilePreview)
+	s.registerMonitor(mux)
 }
 
 // ----------------------------------------------------------------------------

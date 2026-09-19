@@ -17,16 +17,36 @@
   "common.close": "Закрыть",
   "common.cancel": "Отмена",
   "common.unknown": "неизвестно",
-
   "nav.dashboard": "Главная",
   "nav.sources": "Источники",
   "nav.servers": "Серверы",
   "nav.routes": "Маршруты",
   "nav.groups": "Группы",
   "nav.templates": "Шаблоны",
+  "nav.monitoring": "Мониторинг",
   "nav.logs": "Логи",
   "nav.settings": "Настройки",
-
+  "apply.pending": "Есть неприменённые изменения",
+  "apply.applied": "Изменения применены",
+  "apply.apply": "Применить",
+  "apply.applying": "Применяем…",
+  "apply.applyHint": "Сгенерировать профиль, проверить (mihomo -t), записать и перезапустить с проверкой здоровья",
+  "apply.rollback": "Откатить",
+  "apply.rollingBack": "Откатываем…",
+  "apply.rollbackHint": "Вернуть предыдущий применённый профиль",
+  "apply.appliedOk": "Профиль применён: {name}",
+  "apply.failed": "Применение не удалось ({stage}): {error}",
+  "monitoring.title": "Мониторинг",
+  "monitoring.subtitle": "metacubexd: соединения, трафик, логи ядра (FR-8)",
+  "monitoring.missingTitle": "Дист metacubexd не установлен",
+  "monitoring.missingText": "Панель мониторинга metacubexd не скачана на этот стенд. Выполните в корне репозитория:",
+  "monitoring.hint": "Дист ~8 МБ не хранится в git (решение D18 в DECISIONS). Без него остальные вкладки работают полностью.",
+  "logs.diagnTitle": "Диагностика",
+  "logs.checking": "Проверяем…",
+  "logs.appTitle": "Лог приложения",
+  "logs.autoRefresh": "Автообновление",
+  "logs.unavailable": "Логи недоступны",
+  "logs.empty": "(лог пуст)",
   "dashboard.title": "Обзор",
   "dashboard.health": "Служба",
   "dashboard.version": "Версия",
@@ -44,7 +64,6 @@
   "dashboard.traffic": "Трафик",
   "dashboard.announce": "Объявление панели",
   "dashboard.partial": "Данные неполные: часть API недоступна",
-
   "sources.title": "Источники",
   "sources.subtitle": "Подписки и ручные серверы (FR-1)",
   "sources.name": "Название",
@@ -63,7 +82,6 @@
   "sources.refreshNote": "Фоновое обновление выполняет планировщик; кнопка «Обновить» перечитывает список.",
   "sources.addFailed": "Не удалось добавить: {msg}",
   "sources.never": "никогда",
-
   "servers.title": "Серверы",
   "servers.subtitle": "Единый пул прокси из всех источников (FR-3)",
   "servers.search": "Поиск по имени",
@@ -79,7 +97,6 @@
   "servers.staleHint": "Исключён из генерации: маршруты на него сообщат «цель потеряна»",
   "servers.delayTestNote": "Периодический тест задержки выполняет планировщик (интервал — в настройках). Кнопки теста на сервере в API нет — показываем последнее измеренное значение.",
   "servers.bySource": "Источник: {name}",
-
   "routes.title": "Маршруты",
   "routes.subtitle": "Правила в порядке применения (FR-4)",
   "routes.noRoutes": "Нет маршрутов. Примените шаблон на вкладке «Шаблоны» или создайте маршрут.",
@@ -116,7 +133,6 @@
   "routes.lanPinned": "Статический лиз закреплён для {ip}",
   "routes.lanSimulated": "DEV-СТУБ: {detail}",
   "routes.lanPinFailed": "Не удалось закрепить: {msg}",
-
   "templates.title": "Шаблоны",
   "templates.subtitle": "Готовые наборы правил (FR-5)",
   "templates.apply": "Применить",
@@ -127,7 +143,6 @@
   "templates.applyFailed": "Не удалось применить: {msg}",
   "templates.providers": "Провайдеры: {list}",
   "templates.unavailable": "Каталог шаблонов недоступен (503)",
-
   "groups.title": "Группы",
   "groups.subtitle": "Пользовательские группы прокси (FR-3.3)",
   "groups.add": "Создать группу",
@@ -145,17 +160,12 @@
   "groups.members": "Участники",
   "groups.membersHint": "Серверы и группы пула; порядок выбора = порядок в fallback.",
   "groups.noPool": "Пул пуст: сначала добавьте подписку или серверы вручную.",
-
   "logs.title": "Логи и диагностика",
   "logs.subtitle": "Логи приложения и nikki/mihomo, проверки службы (FR-9.2/FR-9.4)",
-  "logs.phase5Title": "Появится в Фазе 5",
-  "logs.phase5Text": "API для логов и диагностики (GET /logs, «Проверить nikki», «Проверить доступ к mihomo API», «Проверить геоданные») ещё не реализован — он относится к фазе мониторинга (ТЗ, раздел 7, Фаза 5). Здесь не будет кнопок-пустышек: экран станет рабочим вместе с эндпоинтами.",
   "logs.item.logs": "Просмотр логов приложения и nikki/mihomo (logread)",
   "logs.item.checkNikki": "Проверить nikki",
   "logs.item.checkMihomo": "Проверить доступ к mihomo API",
   "logs.item.checkGeodata": "Проверить геоданные",
-  "logs.hint": "Статус API, счётчики и ошибки источников уже видны на «Главной».",
-
   "settings.title": "Настройки",
   "settings.subtitle": "Глобальные параметры (FR-9.1)",
   "settings.language": "Язык интерфейса",
@@ -172,7 +182,6 @@
   "settings.saveFailed": "Не удалось сохранить: {msg}",
   "settings.profile": "Предпросмотр профиля (YAML)",
   "settings.profileHint": "Текущее состояние, сгенерированное в профиль mihomo (FR-4.9)",
-
   "wizard.title": "Первый запуск",
   "wizard.step": "Шаг {n} из 3",
   "wizard.step1.title": "Добавьте подписку",
@@ -197,7 +206,6 @@
   "wizard.applyFailed": "Не удалось применить шаблон: {msg}",
   "wizard.later": "Пройти позже (данные уже есть)",
   "wizard.hint": "Упрощённый мастер: 3 шага, без валидации URL на клиенте — сервер проверит всё и ответит ошибкой, если что-то не так.",
-
   "health.down": "Служба недоступна",
   "health.unknown": "нет данных"
 }
