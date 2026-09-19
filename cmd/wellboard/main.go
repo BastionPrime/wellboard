@@ -40,8 +40,9 @@ func main() {
 	}
 	addr := ":" + port
 
-	mux := http.NewServeMux()
-	mux.Handle("/api/v1/health", api.HealthHandler(version))
+	// The health route is GET-only (Phase 0 review fix): registering the
+	// method pattern makes net/http answer other methods with 405.
+	mux := api.NewHealthMux(version)
 
 	srv := &http.Server{
 		Addr:              addr,

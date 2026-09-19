@@ -1,6 +1,11 @@
-# WellBoard CI: lint + test on every push/PR to main (Phase 0 scope).
-# The Go toolchain version matches the local docker build image
-# (golang:1.23-alpine, see docs/DECISIONS.md D3) and the go.mod directive.
+# WellBoard CI: lint + test on every push/PR to main.
+#
+# Toolchain note (docs/DECISIONS.md D3): the module targets go 1.22
+# (go.mod directive) while the local docker build/test image is
+# golang:1.23-alpine. Here actions/setup-go pins 1.22 to match go.mod —
+# i.e. CI intentionally builds with the OLDER of the two toolchains, and
+# the docker image (1.23) serves as the dev-host fallback that also
+# satisfies the 1.22 directive.
 
 name: ci
 
@@ -36,6 +41,9 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+      - name: Build
+        run: go build ./...
 
       - name: Test
         run: go test ./...
