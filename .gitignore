@@ -1,0 +1,14 @@
+# Build / test artifacts (anchored: must not match the cmd/wellboard package dir)
+/wellboard
+/cmd/wellboard/wellboard
+
+# Go module / cache pollution (docker builds mount the repo)
+go.sum.bak
+gocache/
+*.log
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
