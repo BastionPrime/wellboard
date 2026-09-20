@@ -1,0 +1,108 @@
+# WellBoard build matrix: cross-compile + OpenWrt packages (.ipk/.apk).
+#
+# NOTE: this workflow is written but NOT exercised — the repo remote is
+# a local bare repo (docs/DECISIONS.md RK4); local verification runs
+# `make cross` + the root Makefile docker targets on the dev host.
+# The matrix below mirrors exactly what make cross does locally.
+
+name: build-matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_IMAGE: golang:1.23-alpine
+  PKG_VERSION: 0.1.0
+  PKG_RELEASE: '1'
+
+jobs:
+  build:
+    name: build (${{ matrix.openwrt_arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - openwrt_arch: aarch64_cortex-a53
+            goarch: arm64
+            goarm: ''
+            gomips: ''
+          - openwrt_arch: aarch64_generic
+            goarch: arm64
+            goarm: ''
+            gomips: ''
+          - openwrt_arch: x86_64
+            goarch: amd64
+            goarm: ''
+            gomips: ''
+          - openwrt_arch: arm_cortex-a7_neon-vfpv4
+            goarch: arm
+            goarm: '7'
+            gomips: ''
+          - openwrt_arch: mipsel_24kc
+            goarch: mipsle
+            goarm: ''
+            gomips: softfloat
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cross-compile wellboard (docker golang:1.23-alpine)
+        run: |
+          docker run --rm -v "$PWD":/app -w /app \
+            -e CGO_ENABLED=0 \
+            -e GOOS=linux \
+            -e GOARCH=${{ matrix.goarch }} \
+            -e GOARM=${{ matrix.goarm }} \
+            -e GOMIPS=${{ matrix.gomips }} \
+            -e GOCACHE=/tmp/gocache \
+            -e GOPATH=/tmp/gopath \
+            $GO_IMAGE \
+            go build -trimpath -ldflags='-s -w' \
+              -o .build/wellboard-linux-${{ matrix.goarch }} ./cmd/wellboard
+          file .build/wellboard-linux-${{ matrix.goarch }}
+
+      - name: Stage prebuilt binary for the OpenWrt package
+        run: |
+          mkdir -p packaging/openwrt/prebuilt
+          cp .build/wellboard-linux-${{ matrix.goarch }} \
+             packaging/openwrt/prebuilt/wellboard
+
+      - name: Build .ipk package (ipk-build via docker)
+        run: |
+          # Packages are produced by scripts/package-ipk.sh, which
+          # emulates the OpenWrt package/install layout and packs it
+          # with GNU ar (ipk = ar archive: debian-binary, data.tar.gz,
+          # control.tar.gz). Same layout for every matrix entry.
+          scripts/package-ipk.sh \
+            wellboard ${{ env.PKG_VERSION }} ${{ matrix.openwrt_arch }} \
+            packaging/openwrt/prebuilt/wellboard
+          scripts/package-ipk.sh \
+            luci-app-wellboard ${{ env.PKG_VERSION }} all \
+            packaging/openwrt/luci-app-wellboard
+
+      - name: Build .apk package (tar.gz apk v2 layout)
+        run: |
+          scripts/package-apk.sh \
+            wellboard ${{ env.PKG_VERSION }} ${{ env.PKG_RELEASE }} \
+            ${{ matrix.openwrt_arch }} \
+            packaging/openwrt/prebuilt/wellboard
+          scripts/package-apk.sh \
+            luci-app-wellboard ${{ env.PKG_VERSION }} ${{ env.PKG_RELEASE }} \
+            all packaging/openwrt/luci-app-wellboard
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wellboard-${{ matrix.openwrt_arch }}
+          path: |
+            dist/*.ipk
+            dist/*.apk
+          if-no-files-found: error

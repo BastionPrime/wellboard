@@ -1,0 +1,14 @@
+{
+    "luci-app-wellboard": {
+        "description": "Grant access to the WellBoard service and its UCI config",
+        "read": {
+            "uci": [ "wellboard" ],
+            "ubus": {
+                "rc": [ "wellboard" ]
+            }
+        },
+        "write": {
+            "uci": [ "wellboard" ]
+        }
+    }
+}
