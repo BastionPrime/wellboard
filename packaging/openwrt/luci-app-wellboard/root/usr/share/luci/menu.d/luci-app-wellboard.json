@@ -1,0 +1,22 @@
+{
+	"admin/services/wellboard": {
+		"title": "WellBoard",
+		"order": 60,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": [ "luci-app-wellboard" ],
+			"uci": { "wellboard": true }
+		}
+	},
+
+	"admin/services/wellboard/board": {
+		"title": "Open Web UI",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "wellboard/redirect"
+		}
+	}
+}

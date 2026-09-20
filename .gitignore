@@ -25,3 +25,7 @@ coverage.cov
 .vscode/
 *.swp
 .DS_Store
+
+# Cross-compile outputs (Phase 6) and local package builds
+.build/
+dist/

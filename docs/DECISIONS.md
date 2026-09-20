@@ -390,6 +390,9 @@ Phase 3 design decisions:
   e2e test asserts. LogsView gained the real live tail; the Phase-4
   "arrives in Phase 5" stub is now fulfilled.
 
+<!-- Phase 6 decisions (D23-D28) live in docs/DECISIONS-phase6.md to
+     keep this file at a reviewable size; the numbering continues. -->
+
 ## Risks
 
 - **RK1.** `nikki.mixin.api_secret` is a 6-digit pseudo-random number
@@ -414,3 +417,15 @@ Phase 3 design decisions:
 - **RK7.** The clash "hours < 24" interval heuristic (S3) is a
   convention guess; a panel sending literal small-second intervals would
   be misread as hours. Real-link testing will confirm.
+- **RK8.** Phase 6 packaging: the .ipk/.apk were never installed
+  through a real `opkg`/`apk` binary (openwrt/rootfs ships neither);
+  the smoke test copies the exact tree the packages contain, so an
+  install-time quirk of opkg (e.g. conffiles handling, uci-defaults
+  invocation order) remains unverified until the BPI-R4 install.
+- **RK9.** The .apk files are unsigned (apk-v2 layout without
+  .sign) and require `--allow-untrusted`; a release needs a signing
+  key and/or a hosted feed before customer rollout.
+- **RK10.** procd respawn was verified with kill -9 in the smoke
+  container; `respawn_retry=0` (unlimited retries) is the convention
+  copied from nikki but was not stress-tested against a crash-looping
+  binary.

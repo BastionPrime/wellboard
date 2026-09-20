@@ -1,0 +1,74 @@
+#!/bin/sh /etc/rc.common
+# WellBoard procd init script.
+# Reads options from UCI config /etc/config/wellboard (section 'main'):
+#   enabled, port, state_dir, templates_dir.
+# The binary itself takes flags --state/--templates; the port comes from
+# the WELLBOARD_PORT environment variable (see cmd/wellboard/main.go).
+
+START=99
+STOP=10
+USE_PROCD=1
+
+PROG="/usr/bin/wellboard"
+
+NAME="wellboard"
+PID_FILE="/var/run/${NAME}.pid"
+LOG_FILE="/var/log/${NAME}.log"
+
+# Fallbacks for values not set in UCI (must match cmd/wellboard defaults).
+DEFAULT_PORT="8090"
+DEFAULT_STATE_DIR="/etc/wellboard"
+DEFAULT_TEMPLATES_DIR="/usr/share/wellboard/templates"
+
+# procd spawns us with a minimal PATH; make our binary findable.
+export PATH="/usr/bin:/usr/sbin:/bin:/sbin"
+
+start_service() {
+	local enabled port state_dir templates_dir
+
+	config_load wellboard
+	config_get_bool enabled main enabled 1
+	[ "$enabled" = "1" ] || {
+		logger -t wellboard "disabled in UCI (wellboard.main.enabled=0), not starting"
+		return 0
+	}
+	config_get port main port "$DEFAULT_PORT"
+	config_get state_dir main state_dir "$DEFAULT_STATE_DIR"
+	config_get templates_dir main templates_dir "$DEFAULT_TEMPLATES_DIR"
+
+	mkdir -p "$state_dir"
+	chmod 0700 "$state_dir"
+
+	logger -t wellboard "starting (port=$port state_dir=$state_dir)"
+
+	procd_open_instance wellboard
+	procd_set_param command "$PROG" --state "$state_dir" --templates "$templates_dir"
+	procd_set_param env WELLBOARD_PORT="$port"
+	procd_set_param pidfile "$PID_FILE"
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param file /etc/config/wellboard
+	procd_set_param respawn \
+		${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-0}
+	procd_close_instance
+}
+
+reload_service() {
+	# Restart instead of a graceful reload: the Go binary has no
+	# SIGHUP handler; a fresh process re-reads UCI-derived flags.
+	stop
+	start
+}
+
+status() {
+	# Simple health probe usable from shell: GET /api/v1/health.
+	local port
+	config_load wellboard
+	config_get port main port "$DEFAULT_PORT"
+	wget -q -O- "http://127.0.0.1:${port}/api/v1/health" 2>/dev/null \
+		|| echo "wellboard: no answer on port $port"
+}
+
+run_triggers() {
+	config_load wellboard
+}

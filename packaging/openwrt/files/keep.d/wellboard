@@ -1,0 +1,4 @@
+# WellBoard files kept across sysupgrade (see /lib/upgrade/keep.d).
+# HWID and all state (subscriptions, servers, routes, generated
+# profiles, logs) live under /etc/wellboard.
+/etc/wellboard

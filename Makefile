@@ -13,7 +13,7 @@ GO_DOCKER := docker run --rm -v $(CURDIR):/app -w /app \
   -e GOPATH=/tmp/gopath \
   $(GO_IMAGE)
 
-.PHONY: build test vet fmt lint run clean
+.PHONY: build test vet fmt lint run clean cross
 
 build:
 	$(GO_DOCKER) go build -o wellboard ./cmd/wellboard
@@ -40,5 +40,12 @@ run:
 	  -e GOCACHE=/tmp/gocache -e GOPATH=/tmp/gopath \
 	  $(GO_IMAGE) go run ./cmd/wellboard --dev
 
+# Stage prebuilt binaries for the OpenWrt package Makefile (same
+# layout scripts/package-ipk.sh consumes; a buildroot checkout would
+# run make in packaging/openwrt instead).
+cross:
+	./scripts/cross-compile.sh
+
 clean:
 	rm -f wellboard cmd/wellboard/wellboard
+	rm -rf .build dist
