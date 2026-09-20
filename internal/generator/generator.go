@@ -490,6 +490,14 @@ func uniqueName(display string, used map[string]int) string {
 // service group is appended by the caller). isGeo reports whether the rule
 // needs geodata (GEOSITE).
 func conditionRule(c model.RouteCondition) (line string, isGeo bool, err error) {
+	// Rule-line safety (security audit Phase 7): condition values are
+	// rendered into comma-separated mihomo rule lines; ',', ':' or
+	// newlines would inject spurious rule segments / profile structure.
+	// The API validates this at write time too — the generator check
+	// covers states that arrived via import or hand-edited state.json.
+	if strings.ContainsAny(c.Value, ",:\n\r") {
+		return "", false, fmt.Errorf("condition %s value %q must not contain ',', ':' or newlines", c.Type, c.Value)
+	}
 	switch c.Type {
 	case model.CondDomain:
 		return "DOMAIN," + c.Value, false, nil

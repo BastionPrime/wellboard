@@ -108,6 +108,11 @@ wget -q -O- http://127.0.0.1:8090/api/v1/health
 config wellboard 'main'
     option enabled '1'
     option port '8090'
+    # Адрес прослушивания (NFR-2.1): unset — только LAN (br-lan, рекомендуется);
+    # IP ('192.168.1.1') или имя интерфейса ('br-lan') — явно;
+    # пусто ('') — все интерфейсы, включая WAN: НЕ рекомендуется
+    # без firewall-правил (аутентификации в v1 нет).
+    #option bind 'br-lan'
     option state_dir '/etc/wellboard'
     option templates_dir '/usr/share/wellboard/templates'
 ```

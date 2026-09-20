@@ -6,12 +6,14 @@ import { usePoolStore } from '../stores/pool'
 import type { Target, TargetType } from '../api'
 
 // Settings (FR-9.1): language, UI port, geodata, delay interval, default
-// policy + read-only profile preview (FR-4.9, GET /api/v1/profile → YAML).
+// policy + read-only profile preview (FR-4.9, GET /api/v1/profile → YAML)
+// + state export/import (FR-6.5, Phase 7).
 const settings = useSettingsStore()
 const pool = usePoolStore()
 const message = ref('')
 const error = ref('')
 const profileYaml = ref('')
+const importMsg = ref('')
 
 const form = reactive({
   ui_port: 0,
@@ -65,6 +67,30 @@ async function loadProfile() {
     profileYaml.value = String(e)
   }
 }
+
+// Import (FR-6.5): POST the chosen file to /api/v1/import and reload
+// the whole app state (the backend validates before replacing).
+async function importState(ev: Event) {
+  const file = (ev.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  importMsg.value = t('common.loading')
+  try {
+    const body = await file.text()
+    const res = await fetch('/api/v1/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    const text = await res.text()
+    if (!res.ok) throw new Error(text || 'HTTP ' + res.status)
+    importMsg.value = t('settings.importDone')
+    settings.load().then(initForm)
+    pool.loadAll()
+  } catch (e) {
+    importMsg.value = t('settings.importFailed', { msg: e instanceof Error ? e.message : String(e) })
+  }
+  ;(ev.target as HTMLInputElement).value = ''
+}
 </script>
 
 <template>
@@ -117,6 +143,15 @@ async function loadProfile() {
     <p class="muted">{{ t('settings.profileHint') }}</p>
     <button class="secondary" @click="loadProfile">{{ t('common.refresh') }}</button>
     <pre v-if="profileYaml" class="profile">{{ profileYaml }}</pre>
+
+    <h2>{{ t('settings.backup') }}</h2>
+    <p class="muted">{{ t('settings.backupHint') }}</p>
+    <a class="button" href="/api/v1/export" download>{{ t('settings.exportState') }}</a>
+    <label class="import">
+      <span>{{ t('settings.importState') }}</span>
+      <input type="file" accept="application/json" @change="importState" />
+      <small v-if="importMsg">{{ importMsg }}</small>
+    </label>
   </section>
 </template>
 
@@ -176,6 +211,30 @@ button {
   background: #f6f6f6;
   color: #333;
   border-color: #ccc;
+}
+.button {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid #1d4ed8;
+  background: #1d4ed8;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+.import {
+  display: grid;
+  gap: 3px;
+  margin-top: 10px;
+  max-width: 420px;
+  font-size: 0.85rem;
+  color: #444;
+}
+.import small {
+  color: #15803d;
+  word-break: break-all;
 }
 .profile {
   margin-top: 10px;

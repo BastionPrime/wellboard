@@ -106,6 +106,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/settings", s.handleSettingsGet)
 	mux.HandleFunc("PATCH /api/v1/settings", s.handleSettingsPatch)
 	mux.HandleFunc("GET /api/v1/profile", s.handleProfilePreview)
+	mux.HandleFunc("GET /api/v1/export", s.handleExport)
+	mux.HandleFunc("POST /api/v1/import", s.handleImport)
 	s.registerMonitor(mux)
 }
 
@@ -744,6 +746,13 @@ func validateRouteIn(st *model.State, in routeIn, knownProviders map[string]bool
 		default:
 			return httpErr(http.StatusBadRequest, "unknown condition type %q", c.Type)
 		}
+		// Rule-line safety: values land in comma-separated mihomo rule
+		// lines; ',' ':' or newlines would inject segments/structure
+		// (security audit Phase 7; the generator enforces the same).
+		if strings.ContainsAny(c.Value, ",:\n\r") {
+			return httpErr(http.StatusBadRequest,
+				"condition %s value %q must not contain ',', ':' or newlines", c.Type, c.Value)
+		}
 		if c.Type == model.CondIPCIDR || c.Type == model.CondSrcDevice {
 			if !isCIDR(c.Value) {
 				return httpErr(http.StatusBadRequest,
@@ -751,7 +760,7 @@ func validateRouteIn(st *model.State, in routeIn, knownProviders map[string]bool
 			}
 		}
 		if c.Type == model.CondDomainSuffix || c.Type == model.CondDomain {
-			if strings.ContainsAny(c.Value, " \t/") || strings.HasPrefix(c.Value, ".") {
+			if strings.ContainsAny(c.Value, " 	/") || strings.HasPrefix(c.Value, ".") {
 				return httpErr(http.StatusBadRequest, "bad domain %q", c.Value)
 			}
 		}
