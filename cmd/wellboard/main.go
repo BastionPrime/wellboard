@@ -13,11 +13,13 @@ import (
 	"errors"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,6 +41,12 @@ var version = "dev"
 // defaultPort is the WellBoard UI port (customer decision Q6, initial TZ 2).
 const defaultPort = "8090"
 
+// lanInterface is the production listen interface (NFR-2.1: LAN only,
+// not WAN). On OpenWrt the family UI lives on the LAN bridge; the bind
+// address is resolved from this interface at startup so custom LAN
+// subnets work without config. Dev mode listens on loopback.
+const lanInterface = "br-lan"
+
 // flags / env for dev mode (initial TZ 5.10).
 var (
 	devFlag       = flag.Bool("dev", false, "enable development mode")
@@ -46,6 +54,7 @@ var (
 	templatesFlag = flag.String("templates", "", "templates directory (default: ./templates in dev)")
 	leasesFlag    = flag.String("leases", "", "DHCP leases file override (dev fixtures)")
 	mihomoBinFlag = flag.String("mihomo", "", "local mihomo binary for the dry-run stand (default: ./bin/mihomo in dev)")
+	bindFlag      = flag.String("bind", "", "listen address: an IP, an interface name (e.g. br-lan) or empty; prod default: "+lanInterface+" IP, dev: 127.0.0.1")
 )
 
 // Dev-stand transport (TZ §5.10: DryRun + local mihomo): mixed-port,
@@ -60,8 +69,69 @@ func envOrDefault(key, def string) string {
 	return def
 }
 
+// listenHost resolves the address the UI listens on (NFR-2.1).
+//
+// Precedence:
+//  1. --bind <value>: an interface name (resolved to its first IPv4),
+//     a literal IP, or a hostname.
+//  2. --bind "" (explicitly empty): all interfaces — the old ":port"
+//     behavior, now an explicit opt-in.
+//  3. dev mode (no --bind): loopback.
+//  4. prod (no --bind): the first IPv4 address of the br-lan interface
+//     (LAN only, never WAN). If br-lan has no usable address the daemon
+//     logs the failure and falls back to loopback — start-fail would
+//     leave the family (and procd) without any UI.
+func listenHost(dev bool, bindSet bool) string {
+	bind := strings.TrimSpace(*bindFlag)
+	if bind != "" {
+		if ip := ipOfInterface(bind); ip != "" {
+			return ip
+		}
+		return bind // literal IP or hostname
+	}
+	if bindSet {
+		return "" // --bind "" = all interfaces (explicit opt-in)
+	}
+	if dev {
+		return "127.0.0.1"
+	}
+	ip := ipOfInterface(lanInterface)
+	if ip == "" {
+		log.Printf("warning: no usable address on %s; listening on 127.0.0.1 (set --bind to override)", lanInterface)
+		return "127.0.0.1"
+	}
+	return ip
+}
+
+// ipOfInterface returns the first IPv4 address of the named interface
+// ("" when the interface does not exist or has no IPv4).
+func ipOfInterface(name string) string {
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return ""
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil && !ipn.IP.IsLoopback() {
+			return ipn.IP.String()
+		}
+	}
+	return ""
+}
+
 func main() {
 	flag.Parse()
+
+	// Whether --bind was passed at all ("" is meaningful: all ifaces).
+	bindSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "bind" {
+			bindSet = true
+		}
+	})
 
 	dev := *devFlag
 	stateDir := *stateFlag
@@ -90,7 +160,7 @@ func main() {
 	if port == "" {
 		port = defaultPort
 	}
-	addr := ":" + port
+	addr := net.JoinHostPort(listenHost(dev, bindSet), port)
 
 	stStore := store.New(stateDir, !dev)
 

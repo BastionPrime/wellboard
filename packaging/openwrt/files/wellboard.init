@@ -1,9 +1,11 @@
 #!/bin/sh /etc/rc.common
 # WellBoard procd init script.
 # Reads options from UCI config /etc/config/wellboard (section 'main'):
-#   enabled, port, state_dir, templates_dir.
-# The binary itself takes flags --state/--templates; the port comes from
-# the WELLBOARD_PORT environment variable (see cmd/wellboard/main.go).
+#   enabled, port, bind, state_dir, templates_dir.
+# The binary itself takes flags --state/--templates/--bind; the port
+# comes from the WELLBOARD_PORT environment variable (see
+# cmd/wellboard/main.go). bind: IP address or interface name (e.g.
+# br-lan); empty value = all interfaces; unset = LAN-only default.
 
 START=99
 STOP=10
@@ -24,7 +26,7 @@ DEFAULT_TEMPLATES_DIR="/usr/share/wellboard/templates"
 export PATH="/usr/bin:/usr/sbin:/bin:/sbin"
 
 start_service() {
-	local enabled port state_dir templates_dir
+	local enabled port bind state_dir templates_dir
 
 	config_load wellboard
 	config_get_bool enabled main enabled 1
@@ -33,6 +35,14 @@ start_service() {
 		return 0
 	}
 	config_get port main port "$DEFAULT_PORT"
+	# bind: unset → pass no --bind (binary LAN-only default br-lan);
+	# empty → --bind "" (all interfaces, explicit opt-in);
+	# value → --bind <ip|iface>.
+	local bind_flag=""
+	if uci -q get wellboard.main.bind >/dev/null 2>&1; then
+		config_get bind main bind ""
+		bind_flag="--bind $bind"
+	fi
 	config_get state_dir main state_dir "$DEFAULT_STATE_DIR"
 	config_get templates_dir main templates_dir "$DEFAULT_TEMPLATES_DIR"
 
@@ -42,7 +52,7 @@ start_service() {
 	logger -t wellboard "starting (port=$port state_dir=$state_dir)"
 
 	procd_open_instance wellboard
-	procd_set_param command "$PROG" --state "$state_dir" --templates "$templates_dir"
+	procd_set_param command "$PROG" --state "$state_dir" --templates "$templates_dir" $bind_flag
 	procd_set_param env WELLBOARD_PORT="$port"
 	procd_set_param pidfile "$PID_FILE"
 	procd_set_param stdout 1
