@@ -1,4 +1,4 @@
-# Phase 7 Decisions (OPE-2271)
+# Phase 7 Decisions
 
 Фаза 7 — закалка и релиз v1 (initial TZ раздел 7). Нумерация
 продолжает DECISIONS.md (D1-D22) и DECISIONS-phase6.md (D23-D28).

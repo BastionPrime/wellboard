@@ -4,9 +4,8 @@ Verified facts and design decisions, each traceable to a source. Code-level
 claims about nikki / Remnawave reference the shallow clones made during
 Phase 0 recon (2026-09-19): nikki = [nikkinikki-org/OpenWrt-nikki](https://github.com/nikkinikki-org/OpenWrt-nikki)
 (main, pushed 2026-09-18), remnawave = [remnawave/backend](https://github.com/remnawave/backend).
-The clone snapshots live at `OPE-2271-research/src/nikki/` and
-`OPE-2271-research/src/remnawave/`; `docs/phase0-findings.md` is the recon
-report. Line numbers below were re-verified against the clones on 2026-09-19.
+The shallow upstream clones used for verification are described in
+`docs/phase0-findings.md` (the recon report). Line numbers below were re-verified against the clones on 2026-09-19.
 
 ## Nikki integration facts (Phase 0, verified)
 
