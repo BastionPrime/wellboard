@@ -460,7 +460,7 @@ func TestSettingsPatch(t *testing.T) {
 }
 
 // ----------------------------------------------------------------------------
-// Route provider validation (review follow-up OPE-2271 phase 3)
+// Route provider validation (review follow-up, phase 3)
 // ----------------------------------------------------------------------------
 
 // TestRouteProvidersValidatedAgainstCatalog: a route referencing a

@@ -1,4 +1,4 @@
-# Security Audit — Phase 7 (OPE-2271)
+# Security Audit — Phase 7
 
 Аудит по фактическому коду (не по описанию), чек-лист NFR-2 / раздел 7
 Фазы 7 initial-tz: auth/CSRF, права файлов, LAN-only слушание, лимиты

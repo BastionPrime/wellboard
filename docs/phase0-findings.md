@@ -1,7 +1,6 @@
-# OPE-2271 — Фаза 0: разведка nikki и Remnawave (проверенные факты)
+# Фаза 0: разведка nikki и Remnawave (проверенные факты)
 
-Дата: 2026-09-19. Исполнитель разведки: adm-dev-lead (клонирование и чтение исходников — лично,
-т.к. назначение adm-dev-eng ещё не создано; работа не кодовая, границы роли не нарушены).
+Дата: 2026-09-19. Исполнитель разведки: технический руководитель проекта (клонирование и чтение исходников — лично, до старта Фазы 0; работа не кодовая).
 Источники: git clone --depth 1 https://github.com/nikkinikki-org/OpenWrt-nikki.git (main, pushed 2026-09-18),
 git clone --depth 1 https://github.com/remnawave/backend.git. Копии исходников: `src/nikki/`, `src/remnawave/`.
 
@@ -76,8 +75,8 @@ git clone --depth 1 https://github.com/remnawave/backend.git. Копии исх�
 
 ## D. Что дальше по роли (lead)
 
-- Создать дочерний тикет «OPE-2271 Фаза 0: каркас» (assignee adm-dev-eng): Go-модуль, `make build`,
+- Следующий шаг: каркас — Go-модуль, `make build`,
   `/api/v1/health`, LICENSE MIT, README, CI, DECISIONS.md с фактами из A/B выше.
 - Далее фазы 1-7 по ТЗ. Одна фаза = один PR в central repo.
 - Окружение сборки: хост без Go; использовать docker `golang:1.23-alpine` (образ уже скачан),
-  node v20.19.2 на хосте; тикет на bootstrap /srv/git у adm (прав нет) — пока git-remote в /srv/dev/git.
+  node v20.19.2 на хосте сборки; центральный git-хостинг на тот момент не был развёрнут — рабочие ветки жили в локальном bare-репозитории.
