@@ -138,6 +138,25 @@ async function finish() {
             <option v-for="tpl in pool.templates" :key="tpl.id" :value="tpl.id">{{ tpl.name }}</option>
           </select>
         </label>
+        <div v-if="pool.templates.length" class="tpl-cards">
+          <div
+            v-for="tpl in pool.templates"
+            :key="tpl.id"
+            class="tpl-card"
+            :class="{ selected: form.template === tpl.id }"
+            @click="form.template = form.template === tpl.id ? '' : tpl.id"
+          >
+            <div class="tpl-card-head">
+              <strong>{{ tpl.name }}</strong>
+              <span v-if="tpl.id === 'all-vpn'" class="badge">MATCH</span>
+            </div>
+            <p v-if="tpl.description" class="tpl-card-desc">{{ tpl.description }}</p>
+            <p v-if="tpl.list_source" class="tpl-card-src">
+              {{ t('templates.listSource', { text: tpl.list_source }) }}
+            </p>
+          </div>
+        </div>
+        <p v-else-if="pool.error" class="error">{{ t('templates.unavailable') }}</p>
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
@@ -196,6 +215,47 @@ h2 {
   border: 1px solid #ccc;
   border-radius: 6px;
   font-size: 0.95rem;
+}
+.tpl-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.tpl-card {
+  border: 1px solid #e2e2e2;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+}
+.tpl-card.selected {
+  border-color: #1d4ed8;
+  background: #f5f8ff;
+}
+.tpl-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tpl-card .badge {
+  background: #ede9fe;
+  color: #6d28d9;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.tpl-card-desc {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #555;
+}
+.tpl-card-src {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #7c3aed;
 }
 .error {
   color: #b91c1c;

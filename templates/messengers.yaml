@@ -1,6 +1,7 @@
 id: messengers
 name: "Мессенджеры"
-description: "Telegram, WhatsApp, Signal, Discord."
+description: "Направляет мессенджеры в выбранную цель (обычно VPN-группу): Telegram, WhatsApp, Signal, Discord. Остальной трафик не трогает. Строгость средняя: список широкий, включая CDN и вспомогательные домены сервисов."
+list_source: "geosite.dat выбранного источника геоданных (категории TELEGRAM, WHATSAPP, SIGNAL, DISCORD); локальный резерв — встроенный providers/messengers.yaml, 22 домена (срез 19.09.2026). Список обновляет mihomo/nikki."
 typical_target: group
 conditions:
   - {type: geosite, value: TELEGRAM}

@@ -1,6 +1,7 @@
 id: streaming
 name: "Стриминги"
-description: "YouTube, Netflix, Twitch, Spotify, Disney+, HBO и другие видеосервисы."
+description: "Направляет видеосервисы в выбранную цель (обычно VPN-группу): YouTube, Netflix, Twitch, Spotify, Disney+, HBO. Остальной трафик не трогает. Строгость средняя: список широкий, вместе с CDN-доменами сервисов."
+list_source: "geosite.dat выбранного источника геоданных (категории YOUTUBE, NETFLIX, TWITCH, SPOTIFY, DISNEY, HBO); локальный резерв — встроенный providers/streaming.yaml, 24 домена, только основные, без CDN-хвостов (срез 19.09.2026). Список обновляет mihomo/nikki."
 typical_target: group
 conditions:
   - {type: geosite, value: YOUTUBE}

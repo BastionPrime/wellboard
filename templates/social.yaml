@@ -1,6 +1,7 @@
 id: social
 name: "Соцсети"
-description: "Instagram, Facebook, Twitter/X, TikTok, Threads."
+description: "Направляет соцсети в выбранную цель (обычно VPN-группу): Instagram, Facebook, Twitter/X, TikTok, Threads. Остальной трафик не трогает. Строгость средняя."
+list_source: "geosite.dat выбранного источника геоданных (категории INSTAGRAM, FACEBOOK, TWITTER, TIKTOK, THREADS). Локального резерва нет: при недоступных геоданных правило не сработает. Список обновляет mihomo/nikki."
 typical_target: group
 conditions:
   - {type: geosite, value: INSTAGRAM}

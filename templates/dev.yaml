@@ -1,6 +1,7 @@
 id: dev
 name: "Разработка"
-description: "GitHub, GitLab, Docker, npm, PyPI, Hugging Face."
+description: "Направляет сервисы разработки в выбранную цель (обычно VPN-группу): GitHub, GitLab, Docker, npm, PyPI, Hugging Face. Остальной трафик не трогает. Строгость средняя; отдельной категории PyPI в geosite нет — домены PyPI приходят из категории PYTHON."
+list_source: "geosite.dat выбранного источника геоданных (категории GITHUB, GITLAB, DOCKER, NPMJS, PYTHON, HUGGINGFACE); локальный резерв — встроенный providers/dev.yaml, 16 доменов (срез 19.09.2026). Список обновляет mihomo/nikki."
 typical_target: group
 conditions:
   - {type: geosite, value: GITHUB}

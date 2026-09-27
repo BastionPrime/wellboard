@@ -80,6 +80,7 @@ export interface Template {
   id: string
   name: string
   description: string
+  list_source: string
   conditions: RouteCondition[]
   typical_target: string
   providers?: string[]

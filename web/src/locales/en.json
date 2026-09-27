@@ -120,6 +120,7 @@
   "templates.appliedPolicy": "Default policy updated",
   "templates.applyFailed": "Apply failed: {msg}",
   "templates.providers": "Providers: {list}",
+  "templates.listSource": "List source: {text}",
   "templates.unavailable": "Template catalog unavailable (503)",
   "groups.title": "Groups",
   "groups.subtitle": "User proxy groups (FR-3.3)",

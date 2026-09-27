@@ -142,6 +142,7 @@
   "templates.appliedPolicy": "Политика по умолчанию обновлена",
   "templates.applyFailed": "Не удалось применить: {msg}",
   "templates.providers": "Провайдеры: {list}",
+  "templates.listSource": "Список: {text}",
   "templates.unavailable": "Каталог шаблонов недоступен (503)",
   "groups.title": "Группы",
   "groups.subtitle": "Пользовательские группы прокси (FR-3.3)",

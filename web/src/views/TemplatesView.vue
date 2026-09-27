@@ -68,6 +68,9 @@ async function apply(tplId: string, name: string) {
           <span v-if="tpl.id === 'all-vpn'" class="badge">MATCH</span>
         </div>
         <p class="tpl-desc">{{ tpl.description }}</p>
+        <p v-if="tpl.list_source" class="tpl-src">
+          {{ t('templates.listSource', { text: tpl.list_source }) }}
+        </p>
         <p v-if="tpl.providers?.length" class="tpl-prov">
           {{ t('templates.providers', { list: tpl.providers.join(', ') }) }}
         </p>
@@ -139,6 +142,11 @@ h1 {
   color: #555;
 }
 .tpl-prov {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #7c3aed;
+}
+.tpl-src {
   margin: 0;
   font-size: 0.78rem;
   color: #7c3aed;

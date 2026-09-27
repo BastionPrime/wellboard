@@ -1,6 +1,7 @@
 id: ai
 name: "AI-сервисы"
-description: "OpenAI/ChatGPT, Anthropic/Claude, Google Gemini, Perplexity, GitHub Copilot."
+description: "Направляет AI-сервисы в выбранную цель (обычно VPN-группу): OpenAI/ChatGPT, Anthropic/Claude, Google Gemini, Perplexity, GitHub Copilot. Остальной трафик не трогает. Строгость средняя: список широкий, попадают и вспомогательные домены сервисов."
+list_source: "geosite.dat выбранного источника геоданных (категории OPENAI, ANTHROPIC, GOOGLE-GEMINI, PERPLEXITY, GITHUB-COPILOT); локальный резерв — встроенный providers/ai.yaml, 14 доменов (срез 19.09.2026). Список обновляет mihomo/nikki."
 typical_target: group
 conditions:
   - {type: geosite, value: OPENAI}

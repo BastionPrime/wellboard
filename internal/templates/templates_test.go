@@ -43,6 +43,12 @@ func TestLoadShippedCatalog(t *testing.T) {
 		if tpl.Name == "" || tpl.Description == "" {
 			t.Errorf("template %q missing name/description", tpl.ID)
 		}
+		// OPE-2980: a template that matches traffic by list needs to
+		// explain where that list comes from; all-vpn (MATCH policy,
+		// no conditions) says so explicitly in its own list_source.
+		if len(tpl.Conditions) > 0 && tpl.ListSource == "" {
+			t.Errorf("template %q with conditions has empty list_source", tpl.ID)
+		}
 	}
 	for id, seen := range want {
 		if !seen {

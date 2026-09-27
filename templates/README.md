@@ -1,7 +1,11 @@
 # Rule template catalog (FR-5.1, FR-5.3, initial TZ Appendix В).
 
 Each `*.yaml` in this directory is one shipped template: `id`, `name`,
-`description`, `conditions` (route condition list), `typical_target`
+`description`, `list_source` (where the domain list comes from: geodata
+categories and/or the local `providers/` fallback — shown in the UI so the
+user knows what a template matches and where its list lives; optional
+field, `all-vpn` is the "no list, MATCH policy" case), `conditions`
+(route condition list), `typical_target`
 (DIRECT / REJECT / server / group suggestion) and, for key templates,
 `providers` — local fallback domain lists (FR-5.4) in
 `providers/<name>.yaml`, used by the generator when geodata categories are

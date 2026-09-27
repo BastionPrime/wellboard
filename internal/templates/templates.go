@@ -26,6 +26,10 @@ type Template struct {
 	Name string `yaml:"name" json:"name"`
 	// Description is a one-line UI explanation.
 	Description string `yaml:"description" json:"description"`
+	// ListSource explains where the template's domain list comes from
+	// (geodata categories, local providers/ fallback, or "no list" for
+	// the MATCH-policy template). Optional for backwards compatibility.
+	ListSource string `yaml:"list_source,omitempty" json:"list_source,omitempty"`
 	// Conditions is the ready-made route condition set.
 	Conditions []model.RouteCondition `yaml:"conditions" json:"conditions"`
 	// TypicalTarget is the suggested target kind: direct|reject|server|group.

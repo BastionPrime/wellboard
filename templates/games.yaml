@@ -1,6 +1,7 @@
 id: games
 name: "Игры"
-description: "Steam, Epic Games, Xbox, PlayStation, Riot. Часто играют напрямую ради пинга."
+description: "Уводит игровой трафик напрямую, минуя VPN (DIRECT): Steam, Epic Games, Xbox, PlayStation, Riot — так меньше пинг. Остальной трафик не трогает. Строгость узкая, но по цели это отказ от прокси для игр: если конкретная игра требует VPN, правило правится на вкладке «Маршруты»."
+list_source: "geosite.dat выбранного источника геоданных (категории STEAM, EPICGAMES, XBOX, PLAYSTATION, RIOT). Локального резерва нет: при недоступных геоданных правило не сработает. Список обновляет mihomo/nikki."
 typical_target: direct
 conditions:
   - {type: geosite, value: STEAM}
