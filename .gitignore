@@ -29,6 +29,10 @@ coverage.cov
 # Cross-compile outputs (Phase 6) and local package builds.
 # Anchored to the repo root: the SPA bundle in web/dist is COMMITTED
 # (DECISIONS D13) — an unanchored `dist/` also matched web/dist and
-# silently dropped the hashed JS bundles from commits (fixed OPE-2980).
+# silently dropped the hashed JS bundles from commits (fixed 2026-09).
 .build/
 /dist/
+
+# Staged prebuilt binaries for the OpenWrt package build (Phase 6 matrix
+# leaves the cross-compiled binary here; never commit it)
+/packaging/openwrt/prebuilt/
