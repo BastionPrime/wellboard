@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { useSettingsStore } from '../stores/settings'
 import { usePoolStore } from '../stores/pool'
@@ -8,6 +9,9 @@ import type { Target, TargetType } from '../api'
 // Settings (FR-9.1): language, UI port, geodata, delay interval, default
 // policy + read-only profile preview (FR-4.9, GET /api/v1/profile → YAML)
 // + state export/import (FR-6.5, Phase 7).
+// OPE-3045: the first-run wizard lives here as an explicit button
+// (auto-redirect on empty state removed from router.ts).
+const router = useRouter()
 const settings = useSettingsStore()
 const pool = usePoolStore()
 const message = ref('')
@@ -99,6 +103,10 @@ async function importState(ev: Event) {
     <p class="muted">{{ t('settings.subtitle') }}</p>
     <p v-if="message" class="ok">{{ message }}</p>
     <p v-if="error" class="error">{{ error }}</p>
+
+    <h2>{{ t('settings.wizardTitle') }}</h2>
+    <p class="muted">{{ t('settings.wizardHint') }}</p>
+    <button class="secondary" @click="router.push('/wizard')">{{ t('settings.wizardButton') }}</button>
 
     <form v-if="settings.settings" class="form" @submit.prevent="save">
       <label>

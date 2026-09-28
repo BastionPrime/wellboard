@@ -21,10 +21,13 @@ export const router = createRouter({
   routes,
 })
 
-// Bootstrap: on the first navigation read settings (locale + whether the
-// first-run wizard should show) before any view mounts.
+// Bootstrap: on the first navigation read settings (locale), sources
+// and the pool before any view mounts. OPE-3045: the first-run
+// auto-redirect to /wizard is REMOVED — the wizard is reachable only
+// by explicit navigation (the button in SettingsView); an empty state
+// is handled by the per-screen empty-state hints.
 let bootstrapped = false
-router.beforeEach(async (to) => {
+router.beforeEach(async () => {
   if (bootstrapped) return true
   bootstrapped = true
   const { useSettingsStore } = await import('./stores/settings')
@@ -38,9 +41,5 @@ router.beforeEach(async (to) => {
   await sources.load().catch(() => {})
   const pool = usePoolStore()
   await pool.loadAll().catch(() => {})
-  // First run: empty state (no sources) → wizard.
-  if (to.path !== '/wizard' && sources.sources.length === 0 && settings.settings) {
-    return { path: '/wizard' }
-  }
   return true
 })
