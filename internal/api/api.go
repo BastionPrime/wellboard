@@ -28,6 +28,7 @@ import (
 	"github.com/wellboard/wellboard/internal/convert"
 	"github.com/wellboard/wellboard/internal/generator"
 	"github.com/wellboard/wellboard/internal/model"
+	"github.com/wellboard/wellboard/internal/nikki"
 	"github.com/wellboard/wellboard/internal/subscription"
 	"github.com/wellboard/wellboard/internal/templates"
 )
@@ -52,6 +53,9 @@ type Server struct {
 	// monitor carries the Phase 5 wiring (apply/logs/diagnostics/
 	// metacubexd/mihomo proxy); nil fields disable the endpoints.
 	monitor MonitorConfig
+	// nikkiPaths is the file list scanned by the nikki subscription
+	// import (OPE-3045 A3); nil = nikki.DefaultPathList().
+	nikkiPaths []string
 	// mu serializes load-modify-save cycles (single-writer; the store
 	// file is rewritten atomically but read-modify-write must not race).
 	mu sync.Mutex
@@ -69,6 +73,11 @@ func NewServer(st Store, catalog *templates.Catalog) *Server {
 // SetLog sets the diagnostics logger.
 func (s *Server) SetLog(f func(format string, args ...any)) { s.logf = f }
 
+// SetNikkiPaths overrides the nikki config file list scanned by the
+// subscription import (tests use fixture paths; production leaves it
+// nil for nikki.DefaultPathList()).
+func (s *Server) SetNikkiPaths(paths []string) { s.nikkiPaths = paths }
+
 func (s *Server) log(format string, args ...any) {
 	if s.logf != nil {
 		s.logf(format, args...)
@@ -81,6 +90,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/state", s.handleState)
 	mux.HandleFunc("GET /api/v1/sources", s.handleSourcesList)
 	mux.HandleFunc("POST /api/v1/sources", s.handleSourcesCreate)
+	mux.HandleFunc("POST /api/v1/sources/import-nikki", s.handleSourcesImportNikki)
 	mux.HandleFunc("GET /api/v1/sources/{id}", s.handleSourceGet)
 	mux.HandleFunc("PATCH /api/v1/sources/{id}", s.handleSourcePatch)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", s.handleSourceDelete)
@@ -292,6 +302,80 @@ func (s *Server) handleSourcesCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log("source %s created", src.ID)
 	writeJSON(w, http.StatusCreated, src)
+}
+
+// ----------------------------------------------------------------------------
+// Sources: nikki import (OPE-3045 A3)
+// ----------------------------------------------------------------------------
+
+// importNikkiIn is the import request body. An empty object works;
+// name optionally overrides the default "nikki N" source naming.
+type importNikkiIn struct {
+	Name string `json:"name"`
+}
+
+// handleSourcesImportNikki discovers subscription URLs in the nikki
+// mihomo config (read-only scan; WellBoard never writes /etc/nikki)
+// and creates a subscription source for every URL not already present
+// (match by URL). Never prints the discovered URLs — logs carry
+// counts only (secret rule).
+func (s *Server) handleSourcesImportNikki(w http.ResponseWriter, r *http.Request) {
+	var in importNikkiIn
+	// Body may be empty (Content-Length 0) — decodeStrict on an empty
+	// stream errors, so only decode when a body is present.
+	if r.ContentLength > 0 {
+		if err := decodeStrict(r, &in, 0); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	paths := s.nikkiPaths
+	if paths == nil {
+		paths = nikki.DefaultPathList()
+	}
+	urls, skipped := nikki.DiscoverSubscriptionURLs(paths)
+	if skipped > 0 {
+		s.log("nikki import: %d unreadable config files skipped", skipped)
+	}
+
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+	existing := map[string]bool{}
+	for _, src := range st.Sources {
+		existing[src.URL] = true
+	}
+	imported := 0
+	for i, u := range urls {
+		if existing[u] {
+			continue
+		}
+		name := in.Name
+		if name == "" {
+			name = fmt.Sprintf("nikki %d", i+1)
+		} else if i > 0 {
+			name = fmt.Sprintf("%s %d", name, i+1)
+		}
+		src := model.Source{
+			ID: newID("sub", st), Kind: string(model.SourceSubscription),
+			Name: name, URL: u, Enabled: true,
+		}
+		st.Sources = append(st.Sources, src)
+		imported++
+	}
+	if err := s.save(st); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.log("nikki import: %d sources created (%d urls found)", imported, len(urls))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"imported": imported,
+		"found":    len(urls),
+		"sources":  st.Sources,
+	})
 }
 
 // sourcePatch is the mutable subset of a source.
@@ -1164,7 +1248,47 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.unlock()
-	writeJSON(w, http.StatusOK, st.Settings)
+	// OPE-3045 A3: the Settings PAGE shows sources with a masked URL
+	// (secret rule: the full URL is not printed on the settings
+	// screen). The shape of the settings object itself is unchanged —
+	// sources_summary is an additional field.
+	summary := []sourceSummary{}
+	for _, src := range st.Sources {
+		summary = append(summary, sourceSummary{
+			ID: src.ID, Name: src.Name, Kind: src.Kind,
+			MaskedURL: maskURL(src.URL), Enabled: src.Enabled,
+		})
+	}
+	writeJSON(w, http.StatusOK, settingsOut{
+		Settings:       st.Settings,
+		SourcesSummary: summary,
+	})
+}
+
+// sourceSummary is one masked sources-list row for the settings page.
+type sourceSummary struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	MaskedURL string `json:"masked_url"`
+	Enabled   bool   `json:"enabled"`
+}
+
+// settingsOut wraps the settings object with the masked sources
+// summary (extra field, existing keys unchanged).
+type settingsOut struct {
+	model.Settings
+	SourcesSummary []sourceSummary `json:"sources_summary"`
+}
+
+// maskURL renders a display-safe URL: the first 10 characters plus
+// the total length when long enough; "****" for short/empty values
+// (a real http(s) URL is always ≥ 10 chars, so short means garbage).
+func maskURL(u string) string {
+	if len(u) > 14 {
+		return u[:10] + "…(" + strconv.Itoa(len(u)) + ")"
+	}
+	return "****"
 }
 
 func (s *Server) handleSettingsPatch(w http.ResponseWriter, r *http.Request) {

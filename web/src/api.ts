@@ -74,6 +74,19 @@ export interface Settings {
   geodata: 'runetfreedom' | 'metacubex'
   default_policy: Target
   delay_test_interval_sec: number
+  // OPE-3045 A3: masked sources list for the settings page (the full
+  // URL is a secret and is not sent to this screen).
+  sources_summary?: SourceSummary[]
+}
+
+// SourceSummary is one masked sources row on the settings page
+// (masked_url: first chars + length, never the full URL).
+export interface SourceSummary {
+  id: string
+  name: string
+  kind: 'subscription' | 'manual' | string
+  masked_url: string
+  enabled: boolean
 }
 
 export interface Template {
@@ -169,4 +182,18 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new APIError(res.status, body.error ?? res.statusText, body.problems, body.routes)
   }
   return body as T
+}
+
+// importNikkiSources (OPE-3045 A3): discover subscription URLs in the
+// nikki mihomo config (read-only scan) and create sources for the new
+// ones. Returns the number imported and found.
+export async function importNikkiSources(name?: string): Promise<{
+  imported: number
+  found: number
+  sources: Source[]
+}> {
+  return api('/sources/import-nikki', {
+    method: 'POST',
+    body: JSON.stringify(name ? { name } : {}),
+  })
 }

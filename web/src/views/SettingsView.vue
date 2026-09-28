@@ -3,8 +3,9 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { useSettingsStore } from '../stores/settings'
+import { useSourcesStore } from '../stores/sources'
 import { usePoolStore } from '../stores/pool'
-import type { Target, TargetType } from '../api'
+import { importNikkiSources, type Target, type TargetType } from '../api'
 
 // Settings (FR-9.1): language, UI port, geodata, delay interval, default
 // policy + read-only profile preview (FR-4.9, GET /api/v1/profile → YAML)
@@ -13,11 +14,53 @@ import type { Target, TargetType } from '../api'
 // (auto-redirect on empty state removed from router.ts).
 const router = useRouter()
 const settings = useSettingsStore()
+const sourcesStore = useSourcesStore()
 const pool = usePoolStore()
 const message = ref('')
 const error = ref('')
 const profileYaml = ref('')
 const importMsg = ref('')
+
+// OPE-3045 A3: masked sources list + nikki import. The full URL never
+// reaches this screen (masked_url only, secret rule).
+const sourcesSummary = ref<{ id: string; name: string; kind: string; masked_url: string; enabled: boolean }[]>([])
+const importResult = ref('')
+const importError = ref('')
+const importing = ref(false)
+
+async function loadSourcesSummary() {
+  // GET /settings now carries sources_summary; the store reload also
+  // refreshes the settings form state.
+  await settings.load().then(initForm).catch(() => {})
+  sourcesSummary.value = settings.settings?.sources_summary ?? []
+}
+
+async function importFromNikki() {
+  importResult.value = ''
+  importError.value = ''
+  importing.value = true
+  try {
+    const res = await importNikkiSources()
+    importResult.value = t('settings.importedCount', { n: res.imported, total: res.found })
+    await loadSourcesSummary()
+    await sourcesStore.load().catch(() => {})
+  } catch (e) {
+    importError.value = t('settings.importFailedMsg', { msg: e instanceof Error ? e.message : String(e) })
+  } finally {
+    importing.value = false
+  }
+}
+
+async function toggleSource(row: { id: string; enabled: boolean }) {
+  try {
+    await sourcesStore.setEnabled(row.id, !row.enabled)
+    row.enabled = !row.enabled
+  } catch (e) {
+    importError.value = t('settings.importFailedMsg', { msg: e instanceof Error ? e.message : String(e) })
+  }
+}
+
+loadSourcesSummary()
 
 const form = reactive({
   ui_port: 0,
@@ -147,6 +190,36 @@ async function importState(ev: Event) {
     </form>
     <p v-else class="muted">{{ t('common.loading') }}</p>
 
+    <h2>{{ t('settings.sourcesTitle') }}</h2>
+    <p class="muted">{{ t('settings.sourcesHint') }}</p>
+    <button class="secondary" :disabled="importing" @click="importFromNikki">
+      {{ importing ? t('common.loading') : t('settings.importFromNikki') }}
+    </button>
+    <p v-if="importResult" class="ok">{{ importResult }}</p>
+    <p v-if="importError" class="error">{{ importError }}</p>
+    <table v-if="sourcesSummary.length" class="sources-table">
+      <thead>
+        <tr>
+          <th>{{ t('sources.name') }}</th>
+          <th>{{ t('sources.url') }}</th>
+          <th>{{ t('common.enabled') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="row in sourcesSummary" :key="row.id">
+          <td>{{ row.name }}</td>
+          <td class="masked">{{ row.masked_url }}</td>
+          <td>
+            <label class="switch">
+              <input type="checkbox" :checked="row.enabled" @change="toggleSource(row)" />
+              <span>{{ row.enabled ? t('common.on') : t('common.off') }}</span>
+            </label>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p v-else class="muted">{{ t('settings.noSources') }}</p>
+
     <h2>{{ t('settings.profile') }}</h2>
     <p class="muted">{{ t('settings.profileHint') }}</p>
     <button class="secondary" @click="loadProfile">{{ t('common.refresh') }}</button>
@@ -243,6 +316,39 @@ button {
 .import small {
   color: #15803d;
   word-break: break-all;
+}
+.sources-table {
+  margin-top: 10px;
+  border-collapse: collapse;
+  max-width: 560px;
+  font-size: 0.9rem;
+}
+.sources-table th,
+.sources-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid #e2e2e2;
+}
+.sources-table th {
+  color: #666;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+.sources-table .masked {
+  color: #555;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #444;
+}
+.switch input {
+  cursor: pointer;
 }
 .profile {
   margin-top: 10px;
