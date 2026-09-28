@@ -295,3 +295,115 @@ describe('pool store route actions', () => {
     vi.unstubAllGlobals()
   })
 })
+
+// ----------------------------------------------------------------------------
+// Template CRUD + toggle (OPE-3045 B1)
+// ----------------------------------------------------------------------------
+
+describe('pool store template actions (OPE-3045 B1)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  const tplFixture = {
+    templates: [
+      { id: 'ads-block', name: 'Ads', origin: 'builtin', overridden: false, disabled: false, conditions: [] },
+      { id: 'mine', name: 'Mine', origin: 'custom', overridden: false, disabled: false, conditions: [] },
+    ],
+    warnings: ['templates: parse /etc/wellboard/templates/broken.yaml: bad file'],
+  }
+
+  it('loadTemplates() fills templates + templateWarnings', async () => {
+    const fetchMock = mockFetch(200, tplFixture)
+    vi.stubGlobal('fetch', fetchMock)
+    const store = usePoolStore()
+    await store.loadTemplates()
+    expect(store.templates).toHaveLength(2)
+    expect(store.templates[0].origin).toBe('builtin')
+    expect(store.templateWarnings).toHaveLength(1)
+    expect(store.templateWarnings[0]).toContain('broken.yaml')
+    vi.unstubAllGlobals()
+  })
+
+  it('saveTemplate() POSTs on create and PUTs on edit, then re-reads the list', async () => {
+    // 1) create → POST /templates
+    let fetchMock = mockFetch(201, { id: 'mine', name: 'Mine', origin: 'custom' })
+    vi.stubGlobal('fetch', fetchMock)
+    const store = usePoolStore()
+    await store.saveTemplate({
+      name: 'Mine',
+      typical_target: 'direct',
+      conditions: [{ type: 'geosite', value: 'youtube' }],
+    })
+    let call = (fetchMock as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]
+    expect(call[0]).toBe('/api/v1/templates')
+    expect((call[1] as RequestInit).method).toBe('POST')
+    expect(JSON.parse((call[1] as RequestInit).body as string).conditions).toEqual([
+      { type: 'geosite', value: 'youtube' },
+    ])
+
+    // 2) edit → PUT /templates/{id}; the follow-up GET /templates
+    // (reload) is served by the same mock (any body).
+    fetchMock = mockFetch(200, { id: 'mine', name: 'Mine v2', origin: 'custom' })
+    vi.stubGlobal('fetch', fetchMock)
+    await store.saveTemplate(
+      {
+        name: 'Mine v2',
+        typical_target: 'direct',
+        conditions: [{ type: 'domain', value: 'x.com' }],
+      },
+      'mine',
+    )
+    call = (fetchMock as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]
+    expect(call[0]).toBe('/api/v1/templates/mine')
+    expect((call[1] as RequestInit).method).toBe('PUT')
+    vi.unstubAllGlobals()
+  })
+
+  it('toggleTemplateDisabled() POSTs {disabled} and updates the local row', async () => {
+    const store = usePoolStore()
+    store.templates = [
+      {
+        id: 'ai',
+        name: 'AI',
+        description: '',
+        list_source: '',
+        conditions: [],
+        typical_target: '',
+        origin: 'builtin',
+        disabled: false,
+      },
+    ]
+    const fetchMock = mockFetch(200, { id: 'ai', name: 'AI', origin: 'builtin', disabled: true })
+    vi.stubGlobal('fetch', fetchMock)
+    await store.toggleTemplateDisabled('ai', true)
+    const call = (fetchMock as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]
+    expect(call[0]).toBe('/api/v1/templates/ai/toggle')
+    expect((call[1] as RequestInit).method).toBe('POST')
+    expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ disabled: true })
+    expect(store.templates[0].disabled).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it('removeTemplate() DELETEs and re-reads the list', async () => {
+    const fetchMock = mockFetch(200, { status: 'deleted' })
+    vi.stubGlobal('fetch', fetchMock)
+    const store = usePoolStore()
+    store.templates = [
+      {
+        id: 'mine',
+        name: 'Mine',
+        description: '',
+        list_source: '',
+        conditions: [],
+        typical_target: '',
+        origin: 'custom',
+      },
+    ]
+    await store.removeTemplate('mine')
+    const call = (fetchMock as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]
+    expect(call[0]).toBe('/api/v1/templates/mine')
+    expect((call[1] as RequestInit).method).toBe('DELETE')
+    vi.unstubAllGlobals()
+  })
+})

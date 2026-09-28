@@ -3,9 +3,9 @@ import { api, type Settings } from '../api'
 
 export type Lang = 'ru' | 'en'
 
-// Settings store (FR-9.1): language (NFR-6), UI port, geodata source,
-// default policy. The language is applied to the i18n composable via
-// setLocale on change.
+// Settings store (FR-9.1): language (NFR-6), UI port, geodata sources
+// (split per kind, OPE-3045 B2), default policy. The language is
+// applied to the i18n composable via setLocale on change.
 export const useSettingsStore = defineStore('settings', {
   state: () => ({
     settings: null as Settings | null,

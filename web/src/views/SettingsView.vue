@@ -5,13 +5,15 @@ import { t } from '../i18n'
 import { useSettingsStore } from '../stores/settings'
 import { useSourcesStore } from '../stores/sources'
 import { usePoolStore } from '../stores/pool'
-import { importNikkiSources, type Target, type TargetType } from '../api'
+import { importNikkiSources, type Target, type TargetType, type GeodataSource } from '../api'
 
 // Settings (FR-9.1): language, UI port, geodata, delay interval, default
 // policy + read-only profile preview (FR-4.9, GET /api/v1/profile → YAML)
 // + state export/import (FR-6.5, Phase 7).
 // OPE-3045: the first-run wizard lives here as an explicit button
 // (auto-redirect on empty state removed from router.ts).
+// OPE-3045 B2: geodata is split per kind (geosite/geoip), each with
+// its own custom URL option, plus the geodata additions editor.
 const router = useRouter()
 const settings = useSettingsStore()
 const sourcesStore = useSourcesStore()
@@ -64,18 +66,56 @@ loadSourcesSummary()
 
 const form = reactive({
   ui_port: 0,
-  geodata: 'runetfreedom' as 'runetfreedom' | 'metacubex',
+  geosite_source: 'runetfreedom' as GeodataSource,
+  geoip_source: 'runetfreedom' as GeodataSource,
+  geosite_custom_url: '',
+  geoip_custom_url: '',
   delay_test_interval_sec: 0,
   default_policy: 'direct',
 })
 
+// Additions rows: {key: "geosite:<cat>"|"geoip:<cat>", values: text}.
+const additionRows = ref<{ key: string; values: string }[]>([])
+
 function initForm() {
   if (!settings.settings) return
   form.ui_port = settings.settings.ui_port
-  form.geodata = settings.settings.geodata
+  form.geosite_source = settings.settings.geosite_source ?? 'runetfreedom'
+  form.geoip_source = settings.settings.geoip_source ?? 'runetfreedom'
+  form.geosite_custom_url = settings.settings.geosite_custom_url ?? ''
+  form.geoip_custom_url = settings.settings.geoip_custom_url ?? ''
   form.delay_test_interval_sec = settings.settings.delay_test_interval_sec
   const dp = settings.settings.default_policy
   form.default_policy = dp.id ?? dp.type
+  // Additions map → editable rows (sorted for stable display).
+  const additions = settings.settings.geodata_additions ?? {}
+  additionRows.value = Object.keys(additions)
+    .sort()
+    .map((key) => ({ key, values: additions[key].join('\n') }))
+}
+
+function addAdditionRow() {
+  additionRows.value.push({ key: 'geosite:', values: '' })
+}
+function removeAdditionRow(i: number) {
+  additionRows.value.splice(i, 1)
+}
+
+// buildAdditions serializes the rows back into the map the API expects
+// (entries split by newline, blank lines dropped; keys kept verbatim —
+// the server validates them).
+function buildAdditions(): Record<string, string[]> | undefined {
+  const out: Record<string, string[]> = {}
+  for (const row of additionRows.value) {
+    const key = row.key.trim()
+    if (!key) continue
+    const entries = row.values
+      .split('\n')
+      .map((v) => v.trim())
+      .filter(Boolean)
+    if (entries.length) out[key] = entries
+  }
+  return out
 }
 initForm()
 if (!settings.settings) settings.load().then(initForm)
@@ -95,7 +135,11 @@ async function save() {
   try {
     await settings.patch({
       ui_port: form.ui_port,
-      geodata: form.geodata,
+      geosite_source: form.geosite_source,
+      geoip_source: form.geoip_source,
+      geosite_custom_url: form.geosite_custom_url.trim(),
+      geoip_custom_url: form.geoip_custom_url.trim(),
+      geodata_additions: buildAdditions(),
       delay_test_interval_sec: form.delay_test_interval_sec,
       default_policy: policyValue(),
     })
@@ -165,11 +209,28 @@ async function importState(ev: Event) {
         <small>{{ t('settings.uiPortHint') }}</small>
       </label>
       <label>
-        <span>{{ t('settings.geodata') }}</span>
-        <select v-model="form.geodata">
+        <span>{{ t('settings.geositeSource') }}</span>
+        <select v-model="form.geosite_source">
           <option value="runetfreedom">{{ t('settings.geodata.runetfreedom') }}</option>
           <option value="metacubex">{{ t('settings.geodata.metacubex') }}</option>
+          <option value="custom">{{ t('settings.geodata.custom') }}</option>
         </select>
+      </label>
+      <label v-if="form.geosite_source === 'custom'">
+        <span>{{ t('settings.geositeCustomUrl') }}</span>
+        <input v-model="form.geosite_custom_url" placeholder="https://…" autocomplete="off" />
+      </label>
+      <label>
+        <span>{{ t('settings.geoipSource') }}</span>
+        <select v-model="form.geoip_source">
+          <option value="runetfreedom">{{ t('settings.geodata.runetfreedom') }}</option>
+          <option value="metacubex">{{ t('settings.geodata.metacubex') }}</option>
+          <option value="custom">{{ t('settings.geodata.custom') }}</option>
+        </select>
+      </label>
+      <label v-if="form.geoip_source === 'custom'">
+        <span>{{ t('settings.geoipCustomUrl') }}</span>
+        <input v-model="form.geoip_custom_url" placeholder="https://…" autocomplete="off" />
       </label>
       <label>
         <span>{{ t('settings.delayInterval') }}</span>
@@ -189,6 +250,27 @@ async function importState(ev: Event) {
       <button type="submit">{{ t('common.save') }}</button>
     </form>
     <p v-else class="muted">{{ t('common.loading') }}</p>
+
+    <!-- OPE-3045 B2: geodata additions (appended domains/CIDRs per
+         category; the generator emits them after the matching rule). -->
+    <div class="additions">
+      <h2>{{ t('settings.additionsTitle') }}</h2>
+      <p class="muted">{{ t('settings.additionsHint') }}</p>
+      <div v-for="(row, i) in additionRows" :key="i" class="add-row">
+        <input v-model="row.key" class="add-key" placeholder="geosite:youtube" autocomplete="off" />
+        <textarea
+          v-model="row.values"
+          class="add-values"
+          rows="3"
+          :placeholder="t('settings.additionsPlaceholder')"
+        ></textarea>
+        <button type="button" class="secondary add-del" @click="removeAdditionRow(i)">×</button>
+      </div>
+      <button type="button" class="secondary" @click="addAdditionRow">
+        {{ t('settings.addAdditionRow') }}
+      </button>
+      <p class="muted small-hint">{{ t('settings.additionsNote') }}</p>
+    </div>
 
     <h2>{{ t('settings.sourcesTitle') }}</h2>
     <p class="muted">{{ t('settings.sourcesHint') }}</p>
@@ -349,6 +431,39 @@ button {
 }
 .switch input {
   cursor: pointer;
+}
+.additions {
+  margin-top: 6px;
+  max-width: 560px;
+}
+.add-row {
+  display: grid;
+  grid-template-columns: 160px 1fr 34px;
+  gap: 6px;
+  margin-bottom: 8px;
+  align-items: start;
+}
+.add-key {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+.add-values {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-family: monospace;
+  resize: vertical;
+}
+.add-del {
+  padding: 8px 0;
+}
+.small-hint {
+  margin-top: 6px;
+  font-size: 0.8rem;
 }
 .profile {
   margin-top: 10px;

@@ -1,5 +1,13 @@
 import { defineStore } from 'pinia'
-import { api, type ServerNode, type Group, type Route, type Template, type LANDevice } from '../api'
+import {
+  api,
+  type ServerNode,
+  type Group,
+  type Route,
+  type Template,
+  type TemplateInput,
+  type LANDevice,
+} from '../api'
 
 // Pool store: servers, groups, routes, templates, LAN devices — the
 // read-mostly catalog used by several screens. Mutations go through the
@@ -11,6 +19,7 @@ export const usePoolStore = defineStore('pool', {
     groups: [] as Group[],
     routes: [] as Route[],
     templates: [] as Template[],
+    templateWarnings: [] as string[],
     lanDevices: [] as LANDevice[] | null,
     lanUnavailable: false,
     loading: false,
@@ -48,17 +57,47 @@ export const usePoolStore = defineStore('pool', {
           api<{ servers: ServerNode[] }>('/servers'),
           api<{ groups: Group[] }>('/groups'),
           api<{ routes: Route[] }>('/routes'),
-          api<{ templates: Template[] }>('/templates'),
+          api<{ templates: Template[]; warnings?: string[] }>('/templates'),
         ])
         this.servers = sv.servers ?? []
         this.groups = gr.groups ?? []
         this.routes = rt.routes ?? []
         this.templates = tp.templates ?? []
+        this.templateWarnings = tp.warnings ?? []
       } catch (e) {
         this.error = e instanceof Error ? e.message : String(e)
       } finally {
         this.loading = false
       }
+    },
+    // loadTemplates re-reads the merged catalog (after template CRUD,
+    // OPE-3045 B1).
+    async loadTemplates() {
+      const tp = await api<{ templates: Template[]; warnings?: string[] }>('/templates')
+      this.templates = tp.templates ?? []
+      this.templateWarnings = tp.warnings ?? []
+    },
+    // Template CRUD (OPE-3045 B1): custom templates + builtin
+    // overrides live in the overlay dir; the server reloads the
+    // merged catalog on every write.
+    async saveTemplate(input: TemplateInput, id?: string): Promise<Template> {
+      const out = id
+        ? await api<Template>('/templates/' + id, { method: 'PUT', body: JSON.stringify(input) })
+        : await api<Template>('/templates', { method: 'POST', body: JSON.stringify(input) })
+      await this.loadTemplates()
+      return out
+    },
+    async removeTemplate(id: string) {
+      await api('/templates/' + id, { method: 'DELETE' })
+      await this.loadTemplates()
+    },
+    async toggleTemplateDisabled(id: string, disabled: boolean) {
+      await api('/templates/' + id + '/toggle', {
+        method: 'POST',
+        body: JSON.stringify({ disabled }),
+      })
+      const i = this.templates.findIndex((x) => x.id === id)
+      if (i >= 0) this.templates[i].disabled = disabled
     },
     async loadLAN() {
       this.lanUnavailable = false
