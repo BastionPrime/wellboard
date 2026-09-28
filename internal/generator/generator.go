@@ -31,9 +31,11 @@ package generator
 import (
 	"fmt"
 	"math"
+	"net"
 	"sort"
 	"strings"
 
+	"github.com/wellboard/wellboard/internal/geodata"
 	"github.com/wellboard/wellboard/internal/model"
 	"gopkg.in/yaml.v3"
 )
@@ -110,6 +112,12 @@ type profile struct {
 	ProxyGroups   []map[string]any `yaml:"proxy-groups"`
 	RuleProviders *map[string]any  `yaml:"rule-providers,omitempty"`
 	Rules         []string         `yaml:"rules"`
+	// GeoXURL pins the geodata download URLs mihomo uses for
+	// GEOSITE/GEOIP rules (OPE-3045 B2). ALWAYS emitted (the known
+	// defaults are stable) so the profile is explicit about where the
+	// .dat files come from; a custom source with an empty URL is a
+	// Problems entry, never a silent default.
+	GeoXURL map[string]string `yaml:"geox-url"`
 }
 
 // Generate translates st into a mihomo profile YAML document. It returns
@@ -320,6 +328,21 @@ func build(st *model.State) (*profile, error) {
 	needGeosite := false
 	usedProviders := map[string]bool{}
 
+	// Geodata additions (OPE-3045 B2): entries are validated once here;
+	// the emit loop then appends them after the matching GEOSITE/GEOIP
+	// rule. Categories not referenced by any route never surface here
+	// (the emit loop only looks up keys for categories it actually
+	// emits) — by design, documented.
+	addValid := map[string]error{}
+	for key, entries := range st.Settings.GeodataAdditions {
+		for _, v := range entries {
+			if err := validateAdditionEntry(key, v); err != nil {
+				addValid[key] = err
+				break
+			}
+		}
+	}
+
 	for _, rt := range routes {
 		if !rt.Enabled {
 			continue // user-disabled route: skip silently
@@ -364,6 +387,31 @@ func build(st *model.State) (*profile, error) {
 				needGeosite = true
 			}
 			rules = append(rules, line+","+svcName)
+			// Geodata additions (OPE-3045 B2): each entry becomes an
+			// extra rule aimed at the SAME route group, right after
+			// the GEOSITE/GEOIP rule for that category.
+			var addKey string
+			switch c.Type {
+			case model.CondGeosite:
+				addKey = "geosite:" + strings.ToLower(c.Value)
+			case model.CondGeoIP:
+				addKey = "geoip:" + c.Value
+			}
+			if addKey != "" {
+				if err, ok := addValid[addKey]; ok && err != nil {
+					prob.add("route %s: geodata additions %q: %v", rt.ID, addKey, err)
+				}
+				for _, extra := range st.Settings.GeodataAdditions[addKey] {
+					var extraLine string
+					switch c.Type {
+					case model.CondGeosite:
+						extraLine = "DOMAIN-SUFFIX," + extra
+					case model.CondGeoIP:
+						extraLine = "IP-CIDR," + extra
+					}
+					rules = append(rules, extraLine+","+svcName)
+				}
+			}
 		}
 		// Local fallback providers (FR-5.4): one RULE-SET line each,
 		// AFTER the explicit conditions of the same route (same target).
@@ -399,10 +447,31 @@ func build(st *model.State) (*profile, error) {
 		return nil, prob
 	}
 
+	// geox-url (OPE-3045 B2): always emit the resolved download URLs.
+	// A custom source with a missing/invalid URL is a config error —
+	// surfaced as Problems, never silently defaulted.
+	geox := map[string]string{}
+	gu, err := geodata.URLFor(geodata.KindGeosite, st.Settings.GeositeSource, st.Settings.GeositeCustomURL)
+	if err != nil {
+		prob.add("settings.geosite_source: %v", err)
+	} else {
+		geox[geodata.KindGeosite] = gu
+	}
+	pu, err := geodata.URLFor(geodata.KindGeoip, st.Settings.GeoipSource, st.Settings.GeoipCustomURL)
+	if err != nil {
+		prob.add("settings.geoip_source: %v", err)
+	} else {
+		geox[geodata.KindGeoip] = pu
+	}
+	if !prob.empty() {
+		return nil, prob
+	}
+
 	prof := &profile{
 		Proxies:     proxies,
 		ProxyGroups: append(userGroups, serviceGroups...),
 		Rules:       rules,
+		GeoXURL:     geox,
 	}
 	if needGeosite || len(usedProviders) > 0 {
 		rp := map[string]any{}
@@ -424,6 +493,42 @@ func build(st *model.State) (*profile, error) {
 // same convention nikki uses for its run dir).
 func ProviderPath(name string) string {
 	return "./providers/" + name + ".yaml"
+}
+
+// validateAdditionEntry checks one geodata-additions value against its
+// key kind (OPE-3045 B2): "geosite:<category>" entries must be
+// domain-suffix-shaped (no ',', ':', newlines, no spaces/slashes, must
+// not start with '.'), "geoip:<category>" entries must be valid CIDRs
+// (net.ParseCIDR). The rule-line safety rules from the security audit
+// apply here too — the values land in comma-separated rule lines.
+func validateAdditionEntry(key, v string) error {
+	kind, _, ok := strings.Cut(key, ":")
+	if !ok {
+		return fmt.Errorf("key %q must be \"geosite:<category>\" or \"geoip:<category>\"", key)
+	}
+	if strings.ContainsAny(v, ",:\n\r") {
+		return fmt.Errorf("value %q must not contain ',', ':' or newlines", v)
+	}
+	switch kind {
+	case "geosite":
+		if v == "" || strings.ContainsAny(v, " 	/") || strings.HasPrefix(v, ".") {
+			return fmt.Errorf("value %q is not a valid domain suffix", v)
+		}
+		for _, r := range v {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '.':
+			default:
+				return fmt.Errorf("value %q is not a valid domain suffix", v)
+			}
+		}
+		return nil
+	case "geoip":
+		if _, _, err := net.ParseCIDR(v); err != nil {
+			return fmt.Errorf("value %q is not a valid CIDR", v)
+		}
+		return nil
+	}
+	return fmt.Errorf("key %q must start with \"geosite:\" or \"geoip:\"", key)
 }
 
 // validProviderName guards the rule-provider names that end up in the

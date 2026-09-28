@@ -47,3 +47,6 @@ rules:
     - DST-PORT,443,rt:rt_1
     - SRC-IP-CIDR,192.168.1.50/32,rt:rt_2
     - MATCH,rt:default
+geox-url:
+    geoip: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geoip.dat
+    geosite: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geosite.dat
