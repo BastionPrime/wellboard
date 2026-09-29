@@ -93,6 +93,26 @@ export interface LANDevice {
   static: boolean
 }
 
+// OPE-2982: external nikki rules (read-only view of the active config).
+export interface ExternalRule {
+  index: number
+  type: string
+  value?: string
+  target: string
+  no_resolve?: boolean
+  raw: string
+  importable: boolean
+}
+
+export interface ExternalRulesView {
+  source: string
+  count: number
+  targets: string[]
+  rules: ExternalRule[]
+  importable_types?: Record<string, string>
+  warning?: string
+}
+
 export interface Health {
   status: string
   app: string

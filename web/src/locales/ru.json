@@ -214,5 +214,18 @@
   "wizard.later": "Пройти позже (данные уже есть)",
   "wizard.hint": "Упрощённый мастер: 3 шага, без валидации URL на клиенте — сервер проверит всё и ответит ошибкой, если что-то не так.",
   "health.down": "Служба недоступна",
-  "health.unknown": "нет данных"
+  "health.unknown": "нет данных",
+  "routes.extShow": "Внешние правила nikki",
+  "routes.extHide": "Скрыть внешние правила",
+  "routes.extTitle": "Внешние правила nikki (только просмотр)",
+  "routes.extHint": "Правила из активного конфига mihomo (/etc/nikki/run/config.yaml). WellBoard их не изменяет и не применяет: вкладка читает файл, ничего не пишет. «Импортировать» копирует одно правило как маршрут WellBoard (создаётся выключенным).",
+  "routes.extMeta": "Всего правил: {count}. Источник: {source}",
+  "routes.extType": "Тип",
+  "routes.extValue": "Значение",
+  "routes.extTarget": "Политика",
+  "routes.extImport": "Импортировать в WellBoard",
+  "routes.extImported": "OK: правило скопировано как маршрут {id} (выключен, включите и «Применить» по желанию)",
+  "routes.extImportFailed": "Не удалось импортировать: {msg}",
+  "routes.extEmpty": "Внешние правила не найдены (файл конфига отсутствует или без секции rules).",
+  "routes.extUnavailable": "Внешние правила недоступны: {msg}"
 }

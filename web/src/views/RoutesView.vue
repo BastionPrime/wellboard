@@ -26,6 +26,39 @@ const error = ref('')
 const formError = ref('')
 
 // ---------------------------------------------------------------------------
+// External nikki rules (OPE-2982): read-only view + explicit import
+// ---------------------------------------------------------------------------
+
+const extOpen = ref(false)
+const extMsg = ref('')
+const extImporting = ref<string | null>(null)
+
+const ext = computed(() => pool.externalRules)
+
+async function toggleExternal() {
+  extOpen.value = !extOpen.value
+  extMsg.value = ''
+  if (extOpen.value && pool.externalRules == null) {
+    await pool.loadExternalRules()
+  }
+}
+
+async function importRule(raw: string) {
+  extMsg.value = ''
+  extImporting.value = raw
+  try {
+    const rt = await pool.importExternalRule(raw)
+    extMsg.value = t('routes.extImported', { id: rt.id })
+    // re-load the external view so the count stays honest
+    await pool.loadExternalRules()
+  } catch (e) {
+    extMsg.value = t('routes.extImportFailed', { msg: e instanceof Error ? e.message : String(e) })
+  } finally {
+    extImporting.value = null
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Form state
 // ---------------------------------------------------------------------------
 
@@ -223,6 +256,55 @@ onMounted(() => {
     <p v-if="error" class="error">{{ error }}</p>
 
     <button v-if="!showForm" class="primary" @click="startCreate">{{ t('routes.add') }}</button>
+    <button v-if="!showForm" class="secondary" @click="toggleExternal">
+      {{ extOpen ? t('routes.extHide') : t('routes.extShow') }}
+    </button>
+
+    <div v-if="extOpen" class="external-rules">
+      <h2>{{ t('routes.extTitle') }}</h2>
+      <p class="hint">{{ t('routes.extHint') }}</p>
+      <p v-if="ext?.warning" class="warn">{{ ext.warning }}</p>
+      <p v-else-if="pool.externalError" class="warn">{{ t('routes.extUnavailable', { msg: pool.externalError }) }}</p>
+      <p v-else-if="pool.externalLoading" class="muted">{{ t('common.loading') }}</p>
+      <template v-else-if="ext">
+        <p class="muted ext-meta">
+          {{ t('routes.extMeta', { count: ext.count, source: ext.source }) }}
+        </p>
+        <p v-if="extMsg" :class="extMsg.startsWith('OK') ? 'ok' : 'error'">{{ extMsg }}</p>
+        <table class="ext-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>{{ t('routes.extType') }}</th>
+              <th>{{ t('routes.extValue') }}</th>
+              <th>{{ t('routes.extTarget') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="ru in ext.rules" :key="ru.index" :class="{ 'no-import': !ru.importable }">
+              <td>{{ ru.index }}</td>
+              <td>{{ ru.type }}<span v-if="ru.no_resolve" class="badge">no-resolve</span></td>
+              <td>{{ ru.value }}</td>
+              <td>{{ ru.target }}</td>
+              <td>
+                <button
+                  v-if="ru.importable"
+                  type="button"
+                  class="small secondary"
+                  :disabled="extImporting === ru.raw"
+                  :title="ru.raw"
+                  @click="importRule(ru.raw)"
+                >
+                  {{ extImporting === ru.raw ? t('common.loading') : t('routes.extImport') }}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+      <p v-else class="muted">{{ t('routes.extEmpty') }}</p>
+    </div>
 
     <form v-if="showForm" class="route-form" @submit.prevent="save">
       <h2>{{ editingId ? t('routes.editTitle') : t('routes.addTitle') }}</h2>
@@ -359,6 +441,44 @@ onMounted(() => {
 h1 {
   margin: 0 0 4px;
   font-size: 1.3rem;
+}
+.external-rules {
+  margin: 14px 0;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+.ext-meta {
+  font-size: 0.85rem;
+}
+.ext-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+.ext-table th,
+.ext-table td {
+  text-align: left;
+  padding: 3px 8px;
+  border-bottom: 1px solid #e2e2e2;
+  word-break: break-all;
+}
+.ext-table tr.no-import td {
+  color: #6b7280;
+}
+.ext-table .badge {
+  margin-left: 6px;
+  font-size: 0.7rem;
+}
+.warn {
+  color: #92400e;
+  font-size: 0.9rem;
+}
+.ok {
+  color: #047857;
+  font-size: 0.9rem;
 }
 .muted {
   color: #666;
