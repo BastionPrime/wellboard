@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { api, type ServerNode, type Group, type Route, type Template, type LANDevice } from '../api'
+import { api, type ServerNode, type Group, type Route, type Template, type LANDevice, type ExternalRulesView } from '../api'
 
 // Pool store: servers, groups, routes, templates, LAN devices — the
 // read-mostly catalog used by several screens. Mutations go through the
@@ -13,6 +13,10 @@ export const usePoolStore = defineStore('pool', {
     templates: [] as Template[],
     lanDevices: [] as LANDevice[] | null,
     lanUnavailable: false,
+    // external nikki rules (read-only view).
+    externalRules: null as ExternalRulesView | null,
+    externalLoading: false,
+    externalError: '' as string | null,
     loading: false,
     error: '' as string | null,
   }),
@@ -69,6 +73,34 @@ export const usePoolStore = defineStore('pool', {
         this.lanDevices = null // endpoint unavailable (503 without leases)
         this.lanUnavailable = true
       }
+    },
+    // load the read-only external nikki rules view. Never
+    // mutates anything — GET only; failures land in externalError so
+    // the Routes tab stays usable.
+    async loadExternalRules() {
+      this.externalError = null
+      this.externalLoading = true
+      try {
+        this.externalRules = await api<ExternalRulesView>('/external-rules')
+      } catch (e) {
+        this.externalRules = null
+        this.externalError = e instanceof Error ? e.message : String(e)
+      } finally {
+        this.externalLoading = false
+      }
+    },
+    // import ONE external rule as a WellBoard route. The
+    // route is created disabled; nothing is applied automatically.
+    // Target: explicit from the caller (direct/reject or group/server
+    // id), otherwise the backend maps DIRECT/REJECT and resolves
+    // known group/server names.
+    async importExternalRule(rule: string, target?: { type: string; id?: string }, name?: string): Promise<Route> {
+      const out = await api<Route>('/external-rules/import', {
+        method: 'POST',
+        body: JSON.stringify({ rule, target: target ?? { type: '' }, name: name ?? '' }),
+      })
+      this.routes.push(out)
+      return out
     },
     // pinStatic requests a static lease for a LAN device (FR-4.4). The
     // dev stub answers 200 {status:"simulated", detail:...} — returned
