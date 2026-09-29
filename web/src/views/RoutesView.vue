@@ -26,7 +26,7 @@ const error = ref('')
 const formError = ref('')
 
 // ---------------------------------------------------------------------------
-// External nikki rules (OPE-2982): read-only view + explicit import
+// External nikki rules API (read-only view, explicit import): read-only view + explicit import
 // ---------------------------------------------------------------------------
 
 const extOpen = ref(false)

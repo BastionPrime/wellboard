@@ -93,7 +93,7 @@ export interface LANDevice {
   static: boolean
 }
 
-// OPE-2982: external nikki rules (read-only view of the active config).
+// external nikki rules (read-only view of the active config).
 export interface ExternalRule {
   index: number
   type: string

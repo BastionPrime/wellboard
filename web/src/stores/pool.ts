@@ -13,7 +13,7 @@ export const usePoolStore = defineStore('pool', {
     templates: [] as Template[],
     lanDevices: [] as LANDevice[] | null,
     lanUnavailable: false,
-    // OPE-2982: external nikki rules (read-only view).
+    // external nikki rules (read-only view).
     externalRules: null as ExternalRulesView | null,
     externalLoading: false,
     externalError: '' as string | null,
@@ -74,7 +74,7 @@ export const usePoolStore = defineStore('pool', {
         this.lanUnavailable = true
       }
     },
-    // OPE-2982: load the read-only external nikki rules view. Never
+    // load the read-only external nikki rules view. Never
     // mutates anything — GET only; failures land in externalError so
     // the Routes tab stays usable.
     async loadExternalRules() {
@@ -89,7 +89,7 @@ export const usePoolStore = defineStore('pool', {
         this.externalLoading = false
       }
     },
-    // OPE-2982: import ONE external rule as a WellBoard route. The
+    // import ONE external rule as a WellBoard route. The
     // route is created disabled; nothing is applied automatically.
     // Target: explicit from the caller (direct/reject or group/server
     // id), otherwise the backend maps DIRECT/REJECT and resolves

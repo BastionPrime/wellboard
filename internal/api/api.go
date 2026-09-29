@@ -99,7 +99,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/routes/{id}", s.handleRouteGet)
 	mux.HandleFunc("PATCH /api/v1/routes/{id}", s.handleRoutePatch)
 	mux.HandleFunc("DELETE /api/v1/routes/{id}", s.handleRouteDelete)
-	// External nikki rules (OPE-2982): read-only view of the active
+	// External nikki rules: read-only view of the active
 	// mihomo config + explicit per-rule import into WellBoard state.
 	mux.HandleFunc("GET /api/v1/external-rules", s.handleExternalRulesList)
 	mux.HandleFunc("POST /api/v1/external-rules/import", s.handleExternalRuleImport)
@@ -998,7 +998,7 @@ func (s *Server) handleRouteDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // ----------------------------------------------------------------------------
-// External nikki rules (OPE-2982)
+// External nikki rules API (read-only view, explicit import)
 // ----------------------------------------------------------------------------
 
 // ExternalRule mirrors nikki.ExternalRule over the wire. Source is
@@ -1041,7 +1041,7 @@ var importableRuleTypes = map[string]model.RouteConditionType{
 
 // handleExternalRulesList serves the read-only external rule view.
 // It never writes: the handler takes no lock on the store (nothing to
-// save) and the source file is opened read-only (invariant OPE-2982).
+// save) and the source file is opened read-only (design invariant).
 func (s *Server) handleExternalRulesList(w http.ResponseWriter, r *http.Request) {
 	rules, targets, err := nikki.LoadExternalRules()
 	if err != nil {
@@ -1097,7 +1097,7 @@ type ruleImportIn struct {
 }
 
 // handleExternalRuleImport copies ONE external rule into WellBoard
-// state as a route (OPE-2982 requirement 2: explicit, never silent,
+// state as a route (explicit, never silent,
 // never automatic). Default disabled: enabled=false until the owner
 // turns it on. The external source is never modified.
 func (s *Server) handleExternalRuleImport(w http.ResponseWriter, r *http.Request) {
@@ -1186,7 +1186,7 @@ func (s *Server) handleExternalRuleImport(w http.ResponseWriter, r *http.Request
 
 // conditionFromRule builds the route condition, applying the same
 // value validation as the routes API (commas/colons/newlines and CIDR
-// checks; OPE-2982: the imported value lands in generated rule lines,
+// checks; the imported value lands in generated rule lines,
 // so the security rules from Phase 7 apply unchanged).
 func conditionFromRule(ru *nikki.ExternalRule, t model.RouteConditionType) (model.RouteCondition, error) {
 	value := strings.TrimSpace(ru.Value)

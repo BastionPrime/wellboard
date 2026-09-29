@@ -1,5 +1,5 @@
 // Package nikki rules: read-only access to the active mihomo/nikki
-// rule set (OPE-2982).
+// rule set (read-only, never written).
 //
 // The ONLY entry point is LoadExternalRules, which parses the nikki
 // runtime config (/etc/nikki/run/config.yaml — the exact file mihomo
