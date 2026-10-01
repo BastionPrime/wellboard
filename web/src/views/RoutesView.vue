@@ -66,6 +66,9 @@ const showForm = ref(false)
 const editingId = ref<string | null>(null) // null = creating
 const lanOpen = ref(false)
 const lanMsg = ref('')
+// lanWarn drives the colour of lanMsg: warnings (a lease that could not
+// be pinned) vs plain confirmations.
+const lanWarn = ref(false)
 const saving = ref(false)
 // The condition row index the LAN picker was opened from.
 const lanIndex = ref(0)
@@ -187,6 +190,7 @@ function openLan(i: number) {
   lanIndex.value = i
   lanOpen.value = true
   lanMsg.value = ''
+  lanWarn.value = false
   if (pool.lanDevices == null) pool.loadLAN().catch(() => {})
 }
 
@@ -199,17 +203,21 @@ function pickDevice(dev: LANDevice) {
 
 async function pinLease(dev: LANDevice) {
   lanMsg.value = ''
+  lanWarn.value = false
   try {
     const out = await pool.pinStatic(dev)
     if (out.status === 'simulated') {
-      // Dev-stub answer: surface the API's own warning verbatim.
+      // The API answered with a warning instead of pinning the lease
+      // (no DHCP control on this host); surface its reason verbatim.
       lanMsg.value = t('routes.lanSimulated', { detail: out.detail ?? '' })
+      lanWarn.value = true
     } else {
       lanMsg.value = t('routes.lanPinned', { ip: dev.ip })
     }
     await pool.loadLAN()
   } catch (e) {
     lanMsg.value = t('routes.lanPinFailed', { msg: e instanceof Error ? e.message : String(e) })
+    lanWarn.value = true
   }
 }
 
@@ -354,7 +362,7 @@ onMounted(() => {
 
         <div v-if="lanOpen" class="lan-picker">
           <h3>{{ t('routes.lanTitle') }}</h3>
-          <p v-if="lanMsg" :class="lanMsg.includes('dev') || lanMsg.includes('simulat') ? 'warn' : 'ok'">{{ lanMsg }}</p>
+          <p v-if="lanMsg" :class="lanWarn ? 'warn' : 'ok'">{{ lanMsg }}</p>
           <p v-if="pool.lanUnavailable" class="warn">{{ t('routes.lanUnavailable') }}</p>
           <template v-else-if="lanDevices.length">
             <div v-for="d in lanDevices" :key="d.mac" class="lan-dev">
