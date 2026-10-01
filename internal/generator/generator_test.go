@@ -283,7 +283,7 @@ func TestRouteOrdering(t *testing.T) {
 	}
 	// OPE-3045 B2: geox-url is emitted after the rules; the last RULE
 	// line is still MATCH,rt:default.
-	rulesSection := s[strings.Index(s, "rules:") : strings.Index(s, "geox-url:")]
+	rulesSection := s[strings.Index(s, "rules:"):strings.Index(s, "geox-url:")]
 	lastRule := strings.TrimSpace(strings.SplitN(strings.TrimSpace(rulesSection), "\n", 2)[1])
 	if !strings.HasSuffix(lastRule, "MATCH,rt:default") {
 		t.Errorf("MATCH,rt:default must be the last rule:\n%s", s)

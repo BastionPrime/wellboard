@@ -22,9 +22,9 @@ import (
 // when no explicit paths are given: the runtime config plus every
 // profile YAML. The /etc/nikki/profiles/*.yaml glob is expanded by the
 // caller (DefaultPathList returns it already expanded).
+// RunConfigPath (the runtime config path, read-only) lives in
+// external.go so the two readers share one definition.
 const (
-	// RunConfigPath is nikki's runtime mihomo config (read-only).
-	RunConfigPath = "/etc/nikki/run/config.yaml"
 	// ProfilesGlob is the profile-file pattern (read-only).
 	ProfilesGlob = "/etc/nikki/profiles/*.yaml"
 )
