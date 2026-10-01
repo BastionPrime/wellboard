@@ -17,3 +17,6 @@ proxy-groups:
       type: select
 rules:
     - MATCH,rt:default
+geox-url:
+    geoip: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geoip.dat
+    geosite: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geosite.dat

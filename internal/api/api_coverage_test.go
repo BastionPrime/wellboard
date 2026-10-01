@@ -667,10 +667,24 @@ func TestSettingsBranches(t *testing.T) {
 	if code != 400 || !strings.Contains(body, "lang") {
 		t.Fatalf("bad lang: %d %s", code, body)
 	}
-	// Bad geodata.
-	code, body = do(t, ts, "PATCH", "/api/v1/settings", `{"geodata":"bogus"}`)
-	if code != 400 || !strings.Contains(body, "geodata") {
-		t.Fatalf("bad geodata: %d %s", code, body)
+	// Bad geodata (OPE-3045 B2: split fields).
+	code, body = do(t, ts, "PATCH", "/api/v1/settings", `{"geosite_source":"bogus"}`)
+	if code != 400 || !strings.Contains(body, "geosite_source") {
+		t.Fatalf("bad geosite_source: %d %s", code, body)
+	}
+	code, body = do(t, ts, "PATCH", "/api/v1/settings", `{"geoip_source":"bogus"}`)
+	if code != 400 || !strings.Contains(body, "geoip_source") {
+		t.Fatalf("bad geoip_source: %d %s", code, body)
+	}
+	// Bad custom URL / additions entries.
+	if code, _ := do(t, ts, "PATCH", "/api/v1/settings", `{"geosite_custom_url":"ftp://nope"}`); code != 400 {
+		t.Fatalf("non-http custom url must 400, got %d", code)
+	}
+	if code, _ := do(t, ts, "PATCH", "/api/v1/settings", `{"geodata_additions":{"weird": ["a.com"]}}`); code != 400 {
+		t.Fatalf("bad additions key must 400, got %d", code)
+	}
+	if code, _ := do(t, ts, "PATCH", "/api/v1/settings", `{"geodata_additions":{"geoip:ru": ["not-a-cidr"]}}`); code != 400 {
+		t.Fatalf("bad additions CIDR must 400, got %d", code)
 	}
 	// Bad default policy target → 409.
 	code, body = do(t, ts, "PATCH", "/api/v1/settings", `{"default_policy":{"type":"server","id":"srv_x"}}`)
@@ -684,7 +698,7 @@ func TestSettingsBranches(t *testing.T) {
 	}
 	// Valid patch of everything.
 	code, body = do(t, ts, "PATCH", "/api/v1/settings", `{
-		"ui_port":9000,"lang":"en","geodata":"metacubex",
+		"ui_port":9000,"lang":"en","geosite_source":"metacubex",
 		"default_policy":{"type":"group","id":"grp_1"},"delay_test_interval_sec":120}`)
 	if code != 200 {
 		t.Fatalf("valid settings patch: %d %s", code, body)

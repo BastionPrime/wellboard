@@ -92,7 +92,7 @@ func testState() *model.State {
 	return &model.State{
 		Version: 2,
 		Settings: model.Settings{
-			UIPort: 8090, Lang: "ru", Geodata: "runetfreedom",
+			UIPort: 8090, Lang: "ru", GeositeSource: "runetfreedom", GeoipSource: "runetfreedom",
 			DefaultPolicy: model.Target{Type: model.TargetDirect},
 		},
 	}

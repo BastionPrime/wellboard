@@ -22,3 +22,6 @@ rules:
     - GEOSITE,youtube,rt:rt_1
     - DOMAIN-SUFFIX,netflix.com,rt:rt_1
     - MATCH,rt:default
+geox-url:
+    geoip: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geoip.dat
+    geosite: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geosite.dat

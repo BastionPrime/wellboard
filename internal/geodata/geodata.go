@@ -34,6 +34,9 @@ const (
 	Runetfreedom SourceKind = "runetfreedom"
 	// MetaCubeX is the alternative source.
 	MetaCubeX SourceKind = "metacubex"
+	// Custom uses a user-supplied URL per file kind (OPE-3045 B2):
+	// the settings carry the actual URLs.
+	Custom SourceKind = "custom"
 )
 
 // Download URLs per source and file kind ("geosite" / "geoip").
@@ -48,12 +51,35 @@ var downloadURL = map[SourceKind]map[string]string{
 	},
 }
 
+// File kinds (the "geosite"/"geoip" argument of URLFor and the checkers).
+const (
+	KindGeosite = "geosite"
+	KindGeoip   = "geoip"
+)
+
 // Valid reports whether s is a known source kind.
 func Valid(s string) bool {
-	return SourceKind(s) == Runetfreedom || SourceKind(s) == MetaCubeX
+	return GeositeValid(s) && GeoipValid(s)
+}
+
+// GeositeValid reports whether s is a valid geosite source
+// ("runetfreedom"|"metacubex"|"custom", OPE-3045 B2).
+func GeositeValid(s string) bool {
+	switch SourceKind(s) {
+	case Runetfreedom, MetaCubeX, Custom:
+		return true
+	}
+	return false
+}
+
+// GeoipValid reports whether s is a valid geoip source (same set).
+func GeoipValid(s string) bool {
+	return GeositeValid(s) // identical value set today
 }
 
 // URL returns the download URL for kind ("geosite"/"geoip").
+// Deprecated for custom sources: use URLFor (OPE-3045 B2), which
+// resolves the custom URL. URL keeps serving the two known kinds.
 func URL(s SourceKind, kind string) (string, error) {
 	m, ok := downloadURL[s]
 	if !ok {
@@ -64,6 +90,32 @@ func URL(s SourceKind, kind string) (string, error) {
 		return "", fmt.Errorf("geodata: unknown kind %q", kind)
 	}
 	return u, nil
+}
+
+// URLFor resolves the download URL for one file kind and source
+// (OPE-3045 B2): known sources map to their stable URLs, "custom"
+// requires a non-empty http(s) customURL. Invalid kind/source/URL
+// combinations return an error naming the problem.
+func URLFor(kind, source, customURL string) (string, error) {
+	switch kind {
+	case KindGeosite, KindGeoip:
+	default:
+		return "", fmt.Errorf("geodata: unknown kind %q", kind)
+	}
+	switch SourceKind(source) {
+	case Runetfreedom, MetaCubeX:
+		return URL(SourceKind(source), kind)
+	case Custom:
+		if customURL == "" {
+			return "", fmt.Errorf("geodata: custom %s source requires a URL", kind)
+		}
+		if !strings.HasPrefix(customURL, "http://") && !strings.HasPrefix(customURL, "https://") {
+			return "", fmt.Errorf("geodata: custom %s URL must be http(s), got %q", kind, customURL)
+		}
+		return customURL, nil
+	default:
+		return "", fmt.Errorf("geodata: unknown source %q", source)
+	}
 }
 
 // Checker verifies geodata availability.
@@ -86,9 +138,9 @@ type Availability struct {
 	Error string `json:"error,omitempty"`
 }
 
-// Check probes the source download endpoints (HEAD, falling back to a
-// 1-byte ranged GET) and reports availability. It never downloads the
-// whole file.
+// Check probes both download endpoints of one source (HEAD, falling
+// back to a 1-byte ranged GET). It never downloads the whole file.
+// Custom sources with their URL split per kind use CheckKind twice.
 func (c *Checker) Check(ctx context.Context, s SourceKind) Availability {
 	res := Availability{Source: s, CheckedAt: time.Now()}
 	client := c.HTTP
@@ -96,11 +148,11 @@ func (c *Checker) Check(ctx context.Context, s SourceKind) Availability {
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
 	var errs []string
-	res.GeositeOK = c.probe(ctx, client, s, "geosite")
+	res.GeositeOK = c.probe(ctx, client, s, "geosite", "")
 	if !res.GeositeOK {
 		errs = append(errs, "geosite.dat endpoint unreachable")
 	}
-	res.GeoipOK = c.probe(ctx, client, s, "geoip")
+	res.GeoipOK = c.probe(ctx, client, s, "geoip", "")
 	if !res.GeoipOK {
 		errs = append(errs, "geoip.dat endpoint unreachable")
 	}
@@ -108,8 +160,37 @@ func (c *Checker) Check(ctx context.Context, s SourceKind) Availability {
 	return res
 }
 
-func (c *Checker) probe(ctx context.Context, client *http.Client, s SourceKind, kind string) bool {
-	u, err := URL(s, kind)
+// CheckKind probes ONE file kind (OPE-3045 B2 split): the geosite and
+// geoip sources are configured separately, each with its own custom
+// URL. The Availability carries the kind's URL in KindURL (empty for
+// known sources) and the ok flag in GeositeOK/GeoipOK matching the kind.
+func (c *Checker) CheckKind(ctx context.Context, kind, source, customURL string) Availability {
+	res := Availability{Source: SourceKind(source), CheckedAt: time.Now()}
+	client := c.HTTP
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+	ok := c.probe(ctx, client, SourceKind(source), kind, customURL)
+	switch kind {
+	case KindGeosite:
+		res.GeositeOK = ok
+	case KindGeoip:
+		res.GeoipOK = ok
+	}
+	if !ok {
+		res.Error = kind + ".dat endpoint unreachable"
+	}
+	return res
+}
+
+func (c *Checker) probe(ctx context.Context, client *http.Client, s SourceKind, kind, customURL string) bool {
+	var u string
+	var err error
+	if SourceKind(s) == Custom {
+		u, err = URLFor(kind, string(s), customURL)
+	} else {
+		u, err = URL(s, kind)
+	}
 	if err != nil {
 		return false
 	}

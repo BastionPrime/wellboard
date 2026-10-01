@@ -173,7 +173,19 @@ func main() {
 
 	// Template catalog (FR-5): fatal in prod (the package is broken),
 	// warning-only in dev (the dir may be absent in a bare checkout).
-	catalog, err := templates.Load(tplDir)
+	// OPE-3045 B1: the user overlay (<state_dir>/templates; /etc/
+	// wellboard/templates in prod) is merged on top — custom templates
+	// and builtin overrides survive sysupgrade via keep.d (it covers
+	// all of /etc/wellboard).
+	overlayDir := filepath.Join(stateDir, "templates")
+	if err := os.MkdirAll(overlayDir, 0o755); err != nil {
+		if dev {
+			log.Printf("warning: templates overlay: %v", err)
+		} else {
+			log.Fatalf("templates overlay: %v", err)
+		}
+	}
+	catalog, err := templates.LoadMerged(tplDir, overlayDir)
 	if err != nil {
 		if dev {
 			log.Printf("warning: templates: %v (template API disabled)", err)
@@ -181,8 +193,12 @@ func main() {
 			log.Fatalf("templates: %v", err)
 		}
 	}
+	for _, warn := range catalog.Warnings {
+		log.Printf("warning: templates: %v", warn)
+	}
 
 	srv := api.NewServer(stStore, catalog)
+	srv.SetOverlayDir(overlayDir)
 	srv.SetLog(func(format string, args ...any) { log.Printf(format, args...) })
 
 	// LAN devices (FR-4.4): lease file + ubus fallback; dev mode uses the

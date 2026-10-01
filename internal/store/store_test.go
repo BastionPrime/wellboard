@@ -108,14 +108,14 @@ func TestLoadNewerVersion(t *testing.T) {
 // (StaleMisses seeding is covered by migrate_test.go).
 func TestMigrateV1BumpsToV2(t *testing.T) {
 	st := &model.State{Version: 1}
-	if err := migrate(st); err != nil {
+	if err := migrate(st, nil); err != nil {
 		t.Fatalf("migrate v1: %v", err)
 	}
 	if st.Version != CurrentVersion {
 		t.Fatalf("version = %d, want %d", st.Version, CurrentVersion)
 	}
 	// Idempotent: migrating an already-current state is a no-op.
-	if err := migrate(st); err != nil {
+	if err := migrate(st, nil); err != nil {
 		t.Fatalf("migrate v2: %v", err)
 	}
 	if st.Version != CurrentVersion {
@@ -212,7 +212,8 @@ func TestJSONShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, key := range []string{
-		`"version"`, `"settings"`, `"ui_port"`, `"lang"`, `"geodata"`,
+		`"version"`, `"settings"`, `"ui_port"`, `"lang"`,
+		`"geosite_source"`, `"geoip_source"`,
 		`"default_policy"`, `"delay_test_interval_sec"`, `"sources"`,
 		`"servers"`, `"groups"`, `"routes"`, `"lan_devices"`,
 		`"update_interval_sec"`,

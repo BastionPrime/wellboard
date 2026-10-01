@@ -71,9 +71,30 @@ export interface Route {
 export interface Settings {
   ui_port: number
   lang: string
-  geodata: 'runetfreedom' | 'metacubex'
+  geosite_source: GeodataSource
+  geoip_source: GeodataSource
+  geosite_custom_url?: string
+  geoip_custom_url?: string
+  geodata_additions?: Record<string, string[]>
   default_policy: Target
   delay_test_interval_sec: number
+  disabled_templates?: string[]
+  // OPE-3045 A3: masked sources list for the settings page (the full
+  // URL is a secret and is not sent to this screen).
+  sources_summary?: SourceSummary[]
+}
+
+// GeodataSource: the per-kind geodata source (OPE-3045 B2).
+export type GeodataSource = 'runetfreedom' | 'metacubex' | 'custom'
+
+// SourceSummary is one masked sources row on the settings page
+// (masked_url: first chars + length, never the full URL).
+export interface SourceSummary {
+  id: string
+  name: string
+  kind: 'subscription' | 'manual' | string
+  masked_url: string
+  enabled: boolean
 }
 
 export interface Template {
@@ -84,6 +105,10 @@ export interface Template {
   conditions: RouteCondition[]
   typical_target: string
   providers?: string[]
+  // OPE-3045 B1: origin ("builtin"|"custom") + override/disabled flags.
+  origin: 'builtin' | 'custom'
+  overridden?: boolean
+  disabled?: boolean
 }
 
 export interface LANDevice {
@@ -189,4 +214,66 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new APIError(res.status, body.error ?? res.statusText, body.problems, body.routes)
   }
   return body as T
+}
+
+// importNikkiSources (OPE-3045 A3): discover subscription URLs in the
+// nikki mihomo config (read-only scan) and create sources for the new
+// ones. Returns the number imported and found.
+export async function importNikkiSources(name?: string): Promise<{
+  imported: number
+  found: number
+  sources: Source[]
+}> {
+  return api('/sources/import-nikki', {
+    method: 'POST',
+    body: JSON.stringify(name ? { name } : {}),
+  })
+}
+
+// ----------------------------------------------------------------------------
+// OPE-3045 B1: custom templates CRUD + toggle; B3: geosite tags
+// ----------------------------------------------------------------------------
+
+// TemplateInput is the template editor payload (create/edit).
+export interface TemplateInput {
+  id?: string // required on create; the path id wins on update
+  name: string
+  description?: string
+  list_source?: string
+  typical_target?: string
+  conditions: { type: string; value: string }[]
+  providers?: string[]
+}
+
+// createTemplate POSTs a new custom template (or a builtin override —
+// writing a builtin id IS editing the shipped set).
+export async function createTemplate(input: TemplateInput): Promise<Template> {
+  return api('/templates', { method: 'POST', body: JSON.stringify(input) })
+}
+
+// updateTemplate PUTs the overlay file for an existing id (builtin
+// ids write an override file).
+export async function updateTemplate(id: string, input: TemplateInput): Promise<Template> {
+  return api('/templates/' + id, { method: 'PUT', body: JSON.stringify(input) })
+}
+
+// deleteTemplate removes the overlay file (builtin re-appears when an
+// override is deleted).
+export async function deleteTemplate(id: string): Promise<{ status: string }> {
+  return api('/templates/' + id, { method: 'DELETE' })
+}
+
+// toggleTemplate enables/disables a template id (builtin included).
+export async function toggleTemplate(id: string, disabled: boolean): Promise<Template> {
+  return api('/templates/' + id + '/toggle', {
+    method: 'POST',
+    body: JSON.stringify({ disabled }),
+  })
+}
+
+// geositeTags fetches the known geosite categories for the template
+// editor datalist (B3).
+export async function geositeTags(): Promise<string[]> {
+  const out = await api<{ tags: string[] }>('/geodata/tags?kind=geosite')
+  return out.tags ?? []
 }

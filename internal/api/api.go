@@ -18,8 +18,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"net"
 	"net/http"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,6 +31,7 @@ import (
 
 	"github.com/wellboard/wellboard/internal/convert"
 	"github.com/wellboard/wellboard/internal/generator"
+	"github.com/wellboard/wellboard/internal/geodata"
 	"github.com/wellboard/wellboard/internal/model"
 	"github.com/wellboard/wellboard/internal/nikki"
 	"github.com/wellboard/wellboard/internal/subscription"
@@ -46,6 +51,12 @@ type Server struct {
 	Store Store
 	// Catalog is the loaded template catalog (templates/ dir).
 	Catalog *templates.Catalog
+	// overlayDir is the user template overlay dir (OPE-3045 B1);
+	// template write/delete handlers 503 when it is unset.
+	overlayDir string
+	// geositeDatPaths is the probed .dat file list for the geosite
+	// tags endpoint (OPE-3045 B3); nil = the default probes.
+	geositeDatPaths []string
 	// lanReader lists DHCP devices (FR-4.4); wired via SetLAN.
 	lanReader LANReader
 	// lanStatic applies static leases; wired via SetLAN.
@@ -53,6 +64,9 @@ type Server struct {
 	// monitor carries the Phase 5 wiring (apply/logs/diagnostics/
 	// metacubexd/mihomo proxy); nil fields disable the endpoints.
 	monitor MonitorConfig
+	// nikkiPaths is the file list scanned by the nikki subscription
+	// import (OPE-3045 A3); nil = nikki.DefaultPathList().
+	nikkiPaths []string
 	// mu serializes load-modify-save cycles (single-writer; the store
 	// file is rewritten atomically but read-modify-write must not race).
 	mu sync.Mutex
@@ -67,8 +81,37 @@ func NewServer(st Store, catalog *templates.Catalog) *Server {
 	return &Server{Store: st, Catalog: catalog}
 }
 
+// SetOverlayDir wires the user template overlay directory (OPE-3045
+// B1): template create/edit/delete write files there. Passing an
+// empty string disables the write endpoints (503).
+func (s *Server) SetOverlayDir(dir string) { s.overlayDir = dir }
+
+// SetGeositeDatPaths overrides the .dat probe list of the geosite tags
+// endpoint (OPE-3045 B3; tests use fixture paths).
+func (s *Server) SetGeositeDatPaths(paths []string) { s.geositeDatPaths = paths }
+
+// ReloadCatalog re-runs templates.LoadMerged on the catalog's own dirs
+// (shipped + overlay) and replaces s.Catalog. Called after every
+// overlay write/delete so the merged view is always current.
+func (s *Server) ReloadCatalog() error {
+	if s.Catalog == nil {
+		return nil
+	}
+	cat, err := templates.LoadMerged(s.Catalog.Dir, s.overlayDir)
+	if err != nil {
+		return err
+	}
+	s.Catalog = cat
+	return nil
+}
+
 // SetLog sets the diagnostics logger.
 func (s *Server) SetLog(f func(format string, args ...any)) { s.logf = f }
+
+// SetNikkiPaths overrides the nikki config file list scanned by the
+// subscription import (tests use fixture paths; production leaves it
+// nil for nikki.DefaultPathList()).
+func (s *Server) SetNikkiPaths(paths []string) { s.nikkiPaths = paths }
 
 func (s *Server) log(format string, args ...any) {
 	if s.logf != nil {
@@ -82,6 +125,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/state", s.handleState)
 	mux.HandleFunc("GET /api/v1/sources", s.handleSourcesList)
 	mux.HandleFunc("POST /api/v1/sources", s.handleSourcesCreate)
+	mux.HandleFunc("POST /api/v1/sources/import-nikki", s.handleSourcesImportNikki)
 	mux.HandleFunc("GET /api/v1/sources/{id}", s.handleSourceGet)
 	mux.HandleFunc("PATCH /api/v1/sources/{id}", s.handleSourcePatch)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", s.handleSourceDelete)
@@ -104,8 +148,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/external-rules", s.handleExternalRulesList)
 	mux.HandleFunc("POST /api/v1/external-rules/import", s.handleExternalRuleImport)
 	mux.HandleFunc("GET /api/v1/templates", s.handleTemplatesList)
+	mux.HandleFunc("POST /api/v1/templates", s.handleTemplatesCreate)
 	mux.HandleFunc("GET /api/v1/templates/{id}", s.handleTemplatesGet)
+	mux.HandleFunc("PUT /api/v1/templates/{id}", s.handleTemplatesUpdate)
+	mux.HandleFunc("DELETE /api/v1/templates/{id}", s.handleTemplatesDelete)
+	mux.HandleFunc("POST /api/v1/templates/{id}/toggle", s.handleTemplatesToggle)
 	mux.HandleFunc("POST /api/v1/templates/{id}/apply", s.handleTemplateApply)
+	mux.HandleFunc("GET /api/v1/geodata/tags", s.handleGeodataTags)
 	mux.HandleFunc("GET /api/v1/lan-devices", s.handleLANDevices)
 	mux.HandleFunc("POST /api/v1/lan-devices/static", s.handleLANStatic)
 	mux.HandleFunc("GET /api/v1/settings", s.handleSettingsGet)
@@ -297,6 +346,80 @@ func (s *Server) handleSourcesCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log("source %s created", src.ID)
 	writeJSON(w, http.StatusCreated, src)
+}
+
+// ----------------------------------------------------------------------------
+// Sources: nikki import (OPE-3045 A3)
+// ----------------------------------------------------------------------------
+
+// importNikkiIn is the import request body. An empty object works;
+// name optionally overrides the default "nikki N" source naming.
+type importNikkiIn struct {
+	Name string `json:"name"`
+}
+
+// handleSourcesImportNikki discovers subscription URLs in the nikki
+// mihomo config (read-only scan; WellBoard never writes /etc/nikki)
+// and creates a subscription source for every URL not already present
+// (match by URL). Never prints the discovered URLs — logs carry
+// counts only (secret rule).
+func (s *Server) handleSourcesImportNikki(w http.ResponseWriter, r *http.Request) {
+	var in importNikkiIn
+	// Body may be empty (Content-Length 0) — decodeStrict on an empty
+	// stream errors, so only decode when a body is present.
+	if r.ContentLength > 0 {
+		if err := decodeStrict(r, &in, 0); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	paths := s.nikkiPaths
+	if paths == nil {
+		paths = nikki.DefaultPathList()
+	}
+	urls, skipped := nikki.DiscoverSubscriptionURLs(paths)
+	if skipped > 0 {
+		s.log("nikki import: %d unreadable config files skipped", skipped)
+	}
+
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+	existing := map[string]bool{}
+	for _, src := range st.Sources {
+		existing[src.URL] = true
+	}
+	imported := 0
+	for i, u := range urls {
+		if existing[u] {
+			continue
+		}
+		name := in.Name
+		if name == "" {
+			name = fmt.Sprintf("nikki %d", i+1)
+		} else if i > 0 {
+			name = fmt.Sprintf("%s %d", name, i+1)
+		}
+		src := model.Source{
+			ID: newID("sub", st), Kind: string(model.SourceSubscription),
+			Name: name, URL: u, Enabled: true,
+		}
+		st.Sources = append(st.Sources, src)
+		imported++
+	}
+	if err := s.save(st); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.log("nikki import: %d sources created (%d urls found)", imported, len(urls))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"imported": imported,
+		"found":    len(urls),
+		"sources":  st.Sources,
+	})
 }
 
 // sourcePatch is the mutable subset of a source.
@@ -1265,12 +1388,46 @@ func defaultImportName(ru *nikki.ExternalRule) string {
 // Templates (FR-5)
 // ----------------------------------------------------------------------------
 
+// templateOut is the API view of a catalog entry: the Template fields
+// plus the disabled flag (from settings, OPE-3045 B1).
+type templateOut struct {
+	templates.Template
+	Disabled bool `json:"disabled"`
+}
+
+// templatesOut is the list response: the merged catalog (origin/
+// overridden on every entry) + overlay warnings + the disabled ids.
+type templatesOut struct {
+	Templates []templateOut `json:"templates"`
+	Warnings  []string      `json:"warnings,omitempty"`
+}
+
+// templateOutList renders the merged catalog with per-entry disabled
+// flags. Reads settings (shared lock scope with the handler).
+func (s *Server) templateOutList(st *model.State) templatesOut {
+	disabled := map[string]bool{}
+	for _, id := range st.Settings.DisabledTemplates {
+		disabled[id] = true
+	}
+	out := templatesOut{Warnings: s.Catalog.Warnings}
+	for _, tpl := range s.Catalog.Templates {
+		out.Templates = append(out.Templates, templateOut{Template: tpl, Disabled: disabled[tpl.ID]})
+	}
+	return out
+}
+
 func (s *Server) handleTemplatesList(w http.ResponseWriter, r *http.Request) {
 	if s.Catalog == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template catalog unavailable"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"templates": s.Catalog.Templates})
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+	writeJSON(w, http.StatusOK, s.templateOutList(st))
 }
 
 func (s *Server) handleTemplatesGet(w http.ResponseWriter, r *http.Request) {
@@ -1278,12 +1435,284 @@ func (s *Server) handleTemplatesGet(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template catalog unavailable"})
 		return
 	}
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
 	t, ok := s.Catalog.Get(r.PathValue("id"))
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "template not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, t)
+	disabled := false
+	for _, id := range st.Settings.DisabledTemplates {
+		if id == t.ID {
+			disabled = true
+		}
+	}
+	writeJSON(w, http.StatusOK, templateOut{Template: t, Disabled: disabled})
+}
+
+// templateIn is the create/update payload for a custom template
+// (OPE-3045 B1). Providers are optional and validated against the
+// shipped payload files.
+type templateIn struct {
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	Description   string                 `json:"description"`
+	ListSource    string                 `json:"list_source"`
+	Conditions    []model.RouteCondition `json:"conditions"`
+	TypicalTarget string                 `json:"typical_target"`
+	Providers     []string               `json:"providers"`
+}
+
+// validateTemplateIn checks the payload (id format, name, conditions,
+// typical_target, provider payload references) and returns the
+// templates.Template to persist. Mirrors the loader rules so a written
+// file round-trips through LoadMerged cleanly.
+func (s *Server) validateTemplateIn(in templateIn) (templates.Template, error) {
+	if !templates.ValidID(in.ID) {
+		return templates.Template{}, httpErr(http.StatusBadRequest, "id must match [a-z0-9-]{1,64}")
+	}
+	if in.Name == "" {
+		return templates.Template{}, httpErr(http.StatusBadRequest, "name is required")
+	}
+	switch in.TypicalTarget {
+	case "direct", "reject", "server", "group", "":
+	default:
+		return templates.Template{}, httpErr(http.StatusBadRequest,
+			"typical_target must be one of direct, reject, server, group")
+	}
+	tpl := templates.Template{
+		ID: in.ID, Name: in.Name, Description: in.Description,
+		ListSource: in.ListSource, Conditions: in.Conditions,
+		TypicalTarget: in.TypicalTarget, Providers: in.Providers,
+	}
+	// Condition rules: the route-validation subset that templates use
+	// (types the generator can translate; value hygiene — no rule-line
+	// injection, format checks per type).
+	for _, c := range in.Conditions {
+		switch c.Type {
+		case model.CondDomain, model.CondDomainSuffix, model.CondDomainKeyword,
+			model.CondGeosite, model.CondGeoIP, model.CondIPCIDR,
+			model.CondSrcDevice, model.CondDstPort:
+		default:
+			return templates.Template{}, httpErr(http.StatusBadRequest, "unknown condition type %q", c.Type)
+		}
+		if c.Value == "" {
+			return templates.Template{}, httpErr(http.StatusBadRequest, "condition %s has empty value", c.Type)
+		}
+		if strings.ContainsAny(c.Value, ",:\n\r") {
+			return templates.Template{}, httpErr(http.StatusBadRequest,
+				"condition %s value %q must not contain ',', ':' or newlines", c.Type, c.Value)
+		}
+		if c.Type == model.CondIPCIDR || c.Type == model.CondSrcDevice {
+			if !isCIDR(c.Value) {
+				return templates.Template{}, httpErr(http.StatusBadRequest, "condition %s value %q is not a valid ip/cidr", c.Type, c.Value)
+			}
+		}
+		if c.Type == model.CondDomainSuffix || c.Type == model.CondDomain {
+			if strings.ContainsAny(c.Value, " 	/") || strings.HasPrefix(c.Value, ".") {
+				return templates.Template{}, httpErr(http.StatusBadRequest, "bad domain %q", c.Value)
+			}
+		}
+		if c.Type == model.CondDstPort {
+			if !isPortOrRange(c.Value) {
+				return templates.Template{}, httpErr(http.StatusBadRequest, "bad dst-port %q", c.Value)
+			}
+		}
+	}
+	// Providers reference the SHIPPED payload files only (the overlay
+	// cannot carry payload files).
+	for _, p := range in.Providers {
+		if _, err := os.Stat(filepath.Join(s.catalogDir(), "providers", p+".yaml")); err != nil {
+			return templates.Template{}, httpErr(http.StatusBadRequest,
+				"provider %q has no shipped payload file", p)
+		}
+	}
+	return tpl, nil
+}
+
+// catalogDir returns the shipped dir behind the current catalog ("" —
+// and a stat miss — when the catalog is unavailable).
+func (s *Server) catalogDir() string {
+	if s.Catalog == nil {
+		return ""
+	}
+	return s.Catalog.Dir
+}
+
+// writeCustomTemplate validates + persists a custom/override template
+// file and reloads the merged catalog (shared by POST and PUT).
+func (s *Server) writeCustomTemplate(w http.ResponseWriter, in templateIn, created bool) {
+	tpl, err := s.validateTemplateIn(in)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if s.overlayDir == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template overlay directory not configured"})
+		return
+	}
+	if err := templates.WriteOverlay(s.overlayDir, tpl); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := s.ReloadCatalog(); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.log("template %s %s (overlay %s)", tpl.ID, map[bool]string{true: "created", false: "updated"}[created], s.overlayDir)
+	out, ok := s.Catalog.Get(tpl.ID)
+	if !ok {
+		writeError(w, httpErr(http.StatusInternalServerError, "template %q missing after write", tpl.ID))
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, templateOut{Template: out})
+}
+
+// handleTemplatesCreate writes a NEW custom template or an override of
+// a builtin one (writing a builtin id IS "editing the shipped set" —
+// the override file replaces it in the merged catalog).
+func (s *Server) handleTemplatesCreate(w http.ResponseWriter, r *http.Request) {
+	if s.Catalog == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template catalog unavailable"})
+		return
+	}
+	var in templateIn
+	if err := decodeStrict(r, &in, 0); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.writeCustomTemplate(w, in, true)
+}
+
+// handleTemplatesUpdate edits an existing custom template or an
+// override (builtin ids route to the same overlay write). The id in
+// the path wins; a body id must match when present.
+func (s *Server) handleTemplatesUpdate(w http.ResponseWriter, r *http.Request) {
+	if s.Catalog == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template catalog unavailable"})
+		return
+	}
+	var in templateIn
+	if err := decodeStrict(r, &in, 0); err != nil {
+		writeError(w, err)
+		return
+	}
+	id := r.PathValue("id")
+	if _, ok := s.Catalog.Get(id); !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "template not found"})
+		return
+	}
+	if in.ID != "" && in.ID != id {
+		writeError(w, httpErr(http.StatusBadRequest, "body id %q does not match path id %q", in.ID, id))
+		return
+	}
+	in.ID = id
+	s.writeCustomTemplate(w, in, false)
+}
+
+// handleTemplatesDelete removes the overlay file for id (never a
+// shipped one). Deleting an override restores the builtin entry.
+func (s *Server) handleTemplatesDelete(w http.ResponseWriter, r *http.Request) {
+	if s.Catalog == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template catalog unavailable"})
+		return
+	}
+	if s.overlayDir == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template overlay directory not configured"})
+		return
+	}
+	id := r.PathValue("id")
+	if _, ok := s.Catalog.Get(id); !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "template not found"})
+		return
+	}
+	if err := templates.DeleteOverlay(s.overlayDir, id); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no custom template file to delete (builtin templates are not deletable)"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if err := s.ReloadCatalog(); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.log("template %s deleted (overlay %s)", id, s.overlayDir)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// toggleIn is the disable/enable request body (OPE-3045 B1).
+type toggleIn struct {
+	Disabled *bool `json:"disabled"`
+}
+
+// handleTemplatesToggle adds/removes the template id in
+// Settings.DisabledTemplates. Works for builtin ("disabling the
+// shipped ones") and custom ids alike.
+func (s *Server) handleTemplatesToggle(w http.ResponseWriter, r *http.Request) {
+	if s.Catalog == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template catalog unavailable"})
+		return
+	}
+	var in toggleIn
+	if err := decodeStrict(r, &in, 0); err != nil {
+		writeError(w, err)
+		return
+	}
+	if in.Disabled == nil {
+		writeError(w, httpErr(http.StatusBadRequest, "disabled is required"))
+		return
+	}
+	id := r.PathValue("id")
+	if _, ok := s.Catalog.Get(id); !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "template not found"})
+		return
+	}
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+	if *in.Disabled {
+		if !containsString(st.Settings.DisabledTemplates, id) {
+			st.Settings.DisabledTemplates = append(st.Settings.DisabledTemplates, id)
+		}
+	} else {
+		st.Settings.DisabledTemplates = removeString(st.Settings.DisabledTemplates, id)
+	}
+	if err := s.save(st); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.log("template %s disabled=%v", id, *in.Disabled)
+	writeJSON(w, http.StatusOK, templateOut{Template: mustTemplate(s.Catalog, id), Disabled: *in.Disabled})
+}
+
+// mustTemplate fetches a template that was just existence-checked.
+func mustTemplate(cat *templates.Catalog, id string) templates.Template {
+	t, _ := cat.Get(id)
+	return t
+}
+
+// containsString reports whether v is in list.
+func containsString(list []string, v string) bool {
+	for _, s := range list {
+		if s == v {
+			return true
+		}
+	}
+	return false
 }
 
 // applyIn is the template-apply request: the chosen target (FR-5.1).
@@ -1293,7 +1722,8 @@ type applyIn struct {
 
 // handleTemplateApply creates a route from the template with the user's
 // target (FR-5.1/FR-5.2). The "all-vpn" template instead sets the
-// default policy (it has no conditions).
+// default policy (it has no conditions). Disabled templates refuse
+// with 409 (OPE-3045 B1: disabled = not offered; apply is explicit).
 func (s *Server) handleTemplateApply(w http.ResponseWriter, r *http.Request) {
 	if s.Catalog == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template catalog unavailable"})
@@ -1315,6 +1745,12 @@ func (s *Server) handleTemplateApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.unlock()
+	if containsString(st.Settings.DisabledTemplates, t.ID) {
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": fmt.Sprintf("template %q is disabled; enable it first", t.ID),
+		})
+		return
+	}
 	if err := validateTarget(st, in.Target); err != nil {
 		writeError(w, err)
 		return
@@ -1345,6 +1781,37 @@ func (s *Server) handleTemplateApply(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log("template %s applied as route %s", t.ID, rt.ID)
 	writeJSON(w, http.StatusCreated, rt)
+}
+
+// ----------------------------------------------------------------------------
+// Geodata tags (OPE-3045 B3)
+// ----------------------------------------------------------------------------
+
+// handleGeodataTags returns the known geosite category tags for the
+// template editor datalist: parsed from a local .dat when found
+// (nikki run dir / state-dir cache), else a curated static list.
+func (s *Server) handleGeodataTags(w http.ResponseWriter, r *http.Request) {
+	kind := r.URL.Query().Get("kind")
+	if kind != "" && kind != "geosite" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind must be \"geosite\""})
+		return
+	}
+	paths := s.geositeDatPaths
+	if paths == nil {
+		paths = defaultGeositeDatPaths()
+	}
+	tags := geodata.KnownGeositeTags(paths)
+	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
+}
+
+// defaultGeositeDatPaths probes the local geosite.dat copies: the
+// nikki/mihomo run dir first, then the WellBoard state-dir cache.
+// Missing files are skipped by KnownGeositeTags.
+func defaultGeositeDatPaths() []string {
+	return []string{
+		"/etc/nikki/run/geosite.dat",
+		"/etc/wellboard/geosite.dat",
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -1419,11 +1886,15 @@ func (s *Server) handleLANStatic(w http.ResponseWriter, r *http.Request) {
 
 // settingsPatch is the mutable settings subset.
 type settingsPatch struct {
-	UIPort               *int          `json:"ui_port"`
-	Lang                 *string       `json:"lang"`
-	Geodata              *string       `json:"geodata"`
-	DefaultPolicy        *model.Target `json:"default_policy"`
-	DelayTestIntervalSec *int          `json:"delay_test_interval_sec"`
+	UIPort               *int                 `json:"ui_port"`
+	Lang                 *string              `json:"lang"`
+	GeositeSource        *string              `json:"geosite_source"`
+	GeoipSource          *string              `json:"geoip_source"`
+	GeositeCustomURL     *string              `json:"geosite_custom_url"`
+	GeoipCustomURL       *string              `json:"geoip_custom_url"`
+	GeodataAdditions     *map[string][]string `json:"geodata_additions"`
+	DefaultPolicy        *model.Target        `json:"default_policy"`
+	DelayTestIntervalSec *int                 `json:"delay_test_interval_sec"`
 }
 
 func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
@@ -1433,7 +1904,47 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.unlock()
-	writeJSON(w, http.StatusOK, st.Settings)
+	// OPE-3045 A3: the Settings PAGE shows sources with a masked URL
+	// (secret rule: the full URL is not printed on the settings
+	// screen). The shape of the settings object itself is unchanged —
+	// sources_summary is an additional field.
+	summary := []sourceSummary{}
+	for _, src := range st.Sources {
+		summary = append(summary, sourceSummary{
+			ID: src.ID, Name: src.Name, Kind: src.Kind,
+			MaskedURL: maskURL(src.URL), Enabled: src.Enabled,
+		})
+	}
+	writeJSON(w, http.StatusOK, settingsOut{
+		Settings:       st.Settings,
+		SourcesSummary: summary,
+	})
+}
+
+// sourceSummary is one masked sources-list row for the settings page.
+type sourceSummary struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	MaskedURL string `json:"masked_url"`
+	Enabled   bool   `json:"enabled"`
+}
+
+// settingsOut wraps the settings object with the masked sources
+// summary (extra field, existing keys unchanged).
+type settingsOut struct {
+	model.Settings
+	SourcesSummary []sourceSummary `json:"sources_summary"`
+}
+
+// maskURL renders a display-safe URL: the first 10 characters plus
+// the total length when long enough; "****" for short/empty values
+// (a real http(s) URL is always ≥ 10 chars, so short means garbage).
+func maskURL(u string) string {
+	if len(u) > 14 {
+		return u[:10] + "…(" + strconv.Itoa(len(u)) + ")"
+	}
+	return "****"
 }
 
 func (s *Server) handleSettingsPatch(w http.ResponseWriter, r *http.Request) {
@@ -1465,14 +1976,57 @@ func (s *Server) handleSettingsPatch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if in.Geodata != nil {
-		switch *in.Geodata {
-		case "runetfreedom", "metacubex":
-			set.Geodata = *in.Geodata
-		default:
-			writeError(w, httpErr(http.StatusBadRequest, "geodata must be \"runetfreedom\" or \"metacubex\""))
+	if in.GeositeSource != nil {
+		if !geodata.GeositeValid(*in.GeositeSource) {
+			writeError(w, httpErr(http.StatusBadRequest, "geosite_source must be \"runetfreedom\", \"metacubex\" or \"custom\""))
 			return
 		}
+		set.GeositeSource = *in.GeositeSource
+	}
+	if in.GeoipSource != nil {
+		if !geodata.GeoipValid(*in.GeoipSource) {
+			writeError(w, httpErr(http.StatusBadRequest, "geoip_source must be \"runetfreedom\", \"metacubex\" or \"custom\""))
+			return
+		}
+		set.GeoipSource = *in.GeoipSource
+	}
+	if in.GeositeCustomURL != nil {
+		if *in.GeositeCustomURL != "" && !strings.HasPrefix(*in.GeositeCustomURL, "http://") && !strings.HasPrefix(*in.GeositeCustomURL, "https://") {
+			writeError(w, httpErr(http.StatusBadRequest, "geosite_custom_url must be http(s)"))
+			return
+		}
+		set.GeositeCustomURL = *in.GeositeCustomURL
+	}
+	if in.GeoipCustomURL != nil {
+		if *in.GeoipCustomURL != "" && !strings.HasPrefix(*in.GeoipCustomURL, "http://") && !strings.HasPrefix(*in.GeoipCustomURL, "https://") {
+			writeError(w, httpErr(http.StatusBadRequest, "geoip_custom_url must be http(s)"))
+			return
+		}
+		set.GeoipCustomURL = *in.GeoipCustomURL
+	}
+	// Full replace of the additions map (OPE-3045 B2). Custom-source
+	// URL presence is enforced at GENERATION time (the profile is
+	// where a custom source without a URL becomes an error) — here we
+	// validate what can be validated: source values and entry formats.
+	if in.GeodataAdditions != nil {
+		for key, entries := range *in.GeodataAdditions {
+			kind, cat, ok := strings.Cut(key, ":")
+			if !ok || cat == "" {
+				writeError(w, httpErr(http.StatusBadRequest, "geodata_additions key %q must be \"geosite:<category>\" or \"geoip:<category>\"", key))
+				return
+			}
+			if kind != "geosite" && kind != "geoip" {
+				writeError(w, httpErr(http.StatusBadRequest, "geodata_additions key %q must start with \"geosite:\" or \"geoip:\"", key))
+				return
+			}
+			for _, v := range entries {
+				if err := validateGeodataAdditionEntry(kind, v); err != nil {
+					writeError(w, httpErr(http.StatusBadRequest, "geodata_additions[%s]: %v", key, err))
+					return
+				}
+			}
+		}
+		set.GeodataAdditions = *in.GeodataAdditions
 	}
 	if in.DefaultPolicy != nil {
 		if err := validateTarget(st, *in.DefaultPolicy); err != nil {
@@ -1689,4 +2243,34 @@ func isPortOrRange(v string) bool {
 		return a <= b
 	}
 	return true
+}
+
+// validateGeodataAdditionEntry checks one additions value by kind
+// (OPE-3045 B2): "geosite" entries must look like domain suffixes,
+// "geoip" entries must be valid CIDRs (net.ParseCIDR — stricter than
+// isCIDR because the additions are always explicit CIDR lists).
+func validateGeodataAdditionEntry(kind, v string) error {
+	if strings.ContainsAny(v, ",:\n\r") {
+		return fmt.Errorf("value %q must not contain ',', ':' or newlines", v)
+	}
+	switch kind {
+	case "geosite":
+		if v == "" || strings.ContainsAny(v, " 	/") || strings.HasPrefix(v, ".") {
+			return fmt.Errorf("value %q is not a valid domain suffix", v)
+		}
+		for _, r := range v {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '.':
+			default:
+				return fmt.Errorf("value %q is not a valid domain suffix", v)
+			}
+		}
+		return nil
+	case "geoip":
+		if _, _, err := net.ParseCIDR(v); err != nil {
+			return fmt.Errorf("value %q is not a valid CIDR", v)
+		}
+		return nil
+	}
+	return fmt.Errorf("unknown kind %q", kind)
 }

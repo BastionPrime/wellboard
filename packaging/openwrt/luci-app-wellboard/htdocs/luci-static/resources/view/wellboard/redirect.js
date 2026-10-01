@@ -1,14 +1,22 @@
 'use strict';
-'require baseclass';
+'require view';
 
 // luci-app-wellboard: the menu "Open Web UI" node.
 // WellBoard serves its own full SPA on port 8090; LuCI only needs to
-// bounce the browser there. Port is read from UCI wellboard.main.port.
+// bounce the browser there. Port is read from the embedded env if
+// present (L.env.wellboardPort), else the default 8090.
+//
+// OPE-3045 A2: this must be a LuCI VIEW ('require view';
+// view.extend), not a baseclass extension — menu action pages are
+// dispatched as views; baseclass.extend produced a broken dispatch
+// in recent LuCI masters.
 
-return baseclass.extend({
+return view.extend({
 	title: _('WellBoard'),
 
-	load: function () { return Promise.resolve(null); },
+	load: function () {
+		return Promise.resolve(null);
+	},
 
 	render: function () {
 		var port = 8090;
