@@ -415,10 +415,13 @@ func (s *Server) handleSourcesImportNikki(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.log("nikki import: %d sources created (%d urls found)", imported, len(urls))
+	// The response carries MASKED rows only: a new API surface must not
+	// leak the subscription URL (secret rule; review fix on OPE-3045 A3
+	// carried into OPE-3401).
 	writeJSON(w, http.StatusOK, map[string]any{
 		"imported": imported,
 		"found":    len(urls),
-		"sources":  st.Sources,
+		"sources":  sourcesSummary(st.Sources),
 	})
 }
 

@@ -19,12 +19,11 @@ import (
 // be printed to logs or tests. Handlers log counts and ids only.
 
 // DefaultPaths lists the files scanned by DiscoverSubscriptionURLs
-// when no explicit paths are given: the runtime config plus every
+// when no explicit paths are given: the runtime config (RunConfigPath,
+// shared with the external-rules reader in external.go) plus every
 // profile YAML. The /etc/nikki/profiles/*.yaml glob is expanded by the
 // caller (DefaultPathList returns it already expanded).
 const (
-	// RunConfigPath is nikki's runtime mihomo config (read-only).
-	RunConfigPath = "/etc/nikki/run/config.yaml"
 	// ProfilesGlob is the profile-file pattern (read-only).
 	ProfilesGlob = "/etc/nikki/profiles/*.yaml"
 )
