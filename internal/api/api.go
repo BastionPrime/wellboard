@@ -147,6 +147,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// mihomo config + explicit per-rule import into WellBoard state.
 	mux.HandleFunc("GET /api/v1/external-rules", s.handleExternalRulesList)
 	mux.HandleFunc("POST /api/v1/external-rules/import", s.handleExternalRuleImport)
+	mux.HandleFunc("POST /api/v1/external-rules/import-all", s.handleExternalRulesImportAll)
 	mux.HandleFunc("GET /api/v1/templates", s.handleTemplatesList)
 	mux.HandleFunc("POST /api/v1/templates", s.handleTemplatesCreate)
 	mux.HandleFunc("GET /api/v1/templates/{id}", s.handleTemplatesGet)
@@ -1310,6 +1311,107 @@ func (s *Server) handleExternalRuleImport(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, rt)
 }
 
+// importAllOut is the bulk-import result: how many of the live nikki
+// rules became WellBoard routes, and why the rest did not.
+type importAllOut struct {
+	Imported int               `json:"imported"`
+	Skipped  int               `json:"skipped"`
+	Total    int               `json:"total"`
+	SkippedD []skippedRuleNote `json:"skipped_rules,omitempty"`
+}
+
+// skippedRuleNote names one rule that could not be imported verbatim.
+type skippedRuleNote struct {
+	Index  int    `json:"index"`
+	Rule   string `json:"raw"`
+	Reason string `json:"reason"`
+}
+
+// handleExternalRulesImportAll copies EVERY importable rule of the live
+// nikki config into WellBoard state as a DISABLED route (the owner
+// enables them individually and presses Apply — nothing is applied
+// automatically, and the running config is never touched).
+//
+// Read-only invariant (deliverable 2 of the ticket): this handler opens
+// RunConfigPath for reading only; no file under /etc/nikki is written
+// by any path in this package.
+func (s *Server) handleExternalRulesImportAll(w http.ResponseWriter, r *http.Request) {
+	rules, _, err := nikki.LoadExternalRules()
+	if err != nil {
+		writeError(w, httpErr(http.StatusServiceUnavailable, "external rules unavailable: %v", err))
+		return
+	}
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+
+	// Existing conditions, so a repeated import is a no-op instead of
+	// piling duplicates onto the route list.
+	seen := map[string]bool{}
+	for _, rt := range st.Routes {
+		for _, c := range rt.Conditions {
+			seen[string(c.Type)+"\x00"+c.Value] = true
+		}
+	}
+
+	out := importAllOut{Total: len(rules)}
+	for i := range rules {
+		ru := &rules[i]
+		condType, importable := importableRuleTypes[ru.Type]
+		if !importable || ru.Type == "MATCH" {
+			out.Skipped++
+			out.SkippedD = append(out.SkippedD, skippedRuleNote{ru.Index, ru.Raw,
+				fmt.Sprintf("rule type %s is shown read-only (not expressible as a route)", ru.Type)})
+			continue
+		}
+		cond, err := conditionFromRule(ru, condType)
+		if err != nil {
+			out.Skipped++
+			out.SkippedD = append(out.SkippedD, skippedRuleNote{ru.Index, ru.Raw, err.Error()})
+			continue
+		}
+		if seen[string(cond.Type)+"\x00"+cond.Value] {
+			out.Skipped++
+			out.SkippedD = append(out.SkippedD, skippedRuleNote{ru.Index, ru.Raw, "already imported"})
+			continue
+		}
+		target, _ := targetFromPolicy(ru.Target)
+		if target.Type == "" {
+			if t2, ok := serverOrGroupByName(st, ru.Target); ok {
+				target = t2
+			}
+		}
+		if target.Type == "" {
+			out.Skipped++
+			out.SkippedD = append(out.SkippedD, skippedRuleNote{ru.Index, ru.Raw,
+				fmt.Sprintf("policy %q is not a WellBoard group/server", ru.Target)})
+			continue
+		}
+		if err := validateTarget(st, target); err != nil {
+			out.Skipped++
+			out.SkippedD = append(out.SkippedD, skippedRuleNote{ru.Index, ru.Raw, err.Error()})
+			continue
+		}
+		st.Routes = append(st.Routes, model.Route{
+			ID: newID("rt", st), Name: defaultImportName(ru), Enabled: false,
+			Order: nextOrder(st), Conditions: []model.RouteCondition{cond},
+			Target: target, OnUnavailable: "block",
+		})
+		seen[string(cond.Type)+"\x00"+cond.Value] = true
+		out.Imported++
+	}
+	if err := s.save(st); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.log("external rules bulk import: %d routes created, %d skipped (%d rules read from %s)",
+		out.Imported, out.Skipped, out.Total, nikki.RunConfigPath)
+	writeJSON(w, http.StatusCreated, out)
+}
+
 // conditionFromRule builds the route condition, applying the same
 // value validation as the routes API (commas/colons/newlines and CIDR
 // checks; the imported value lands in generated rule lines,
@@ -1911,13 +2013,7 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 	// (secret rule: the full URL is not printed on the settings
 	// screen). The shape of the settings object itself is unchanged —
 	// sources_summary is an additional field.
-	summary := []sourceSummary{}
-	for _, src := range st.Sources {
-		summary = append(summary, sourceSummary{
-			ID: src.ID, Name: src.Name, Kind: src.Kind,
-			MaskedURL: maskURL(src.URL), Enabled: src.Enabled,
-		})
-	}
+	summary := sourcesSummary(st.Sources)
 	writeJSON(w, http.StatusOK, settingsOut{
 		Settings:       st.Settings,
 		SourcesSummary: summary,
@@ -1948,6 +2044,20 @@ func maskURL(u string) string {
 		return u[:10] + "…(" + strconv.Itoa(len(u)) + ")"
 	}
 	return "****"
+}
+
+// sourcesSummary maps sources onto the masked rows used by every
+// non-/sources API surface (the raw URL stays in the existing /sources
+// route only, as it always has).
+func sourcesSummary(sources []model.Source) []sourceSummary {
+	out := make([]sourceSummary, 0, len(sources))
+	for _, src := range sources {
+		out = append(out, sourceSummary{
+			ID: src.ID, Name: src.Name, Kind: src.Kind,
+			MaskedURL: maskURL(src.URL), Enabled: src.Enabled,
+		})
+	}
+	return out
 }
 
 func (s *Server) handleSettingsPatch(w http.ResponseWriter, r *http.Request) {

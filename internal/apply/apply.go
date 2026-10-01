@@ -32,7 +32,9 @@ import (
 const HistorySize = 5
 
 // HealthTimeout is the post-activation health budget (FR-6.4: 15 s).
-const HealthTimeout = 15 * time.Second
+// It is a var rather than a const so tests can shorten the budget
+// while production keeps the 15 s rollback window the ticket requires.
+var HealthTimeout = 15 * time.Second
 
 // Result is the outcome of an apply attempt (success or failure).
 type Result struct {
