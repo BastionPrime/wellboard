@@ -47,7 +47,7 @@ type Result struct {
 	Error string `json:"error,omitempty"`
 	// RolledBack is true when the failure triggered an auto-rollback
 	// (FR-6.4) and LastGoodProfile names the restored profile.
-	RolledBack     bool   `json:"rolled_back,omitempty"`
+	RolledBack      bool   `json:"rolled_back,omitempty"`
 	LastGoodProfile string `json:"last_good_profile,omitempty"`
 	// AppliedAt is the completion time.
 	AppliedAt time.Time `json:"applied_at"`

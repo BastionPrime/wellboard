@@ -369,7 +369,6 @@ func TestPhase5E2E(t *testing.T) {
 	}
 	t.Logf("mihomo alive after rollback: %s", strings.TrimSpace(body))
 
-
 	// ------------------------------------------------------------
 	// 5. History listing + logs + diagnostics surface.
 	// ------------------------------------------------------------
