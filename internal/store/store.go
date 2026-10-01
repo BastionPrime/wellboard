@@ -23,7 +23,12 @@ import (
 // counter) and the subscription lifecycle fields on Source (UserInfo,
 // HWIDStatus, Announce — present in the TZ 5.3 example since Phase 1, but
 // only written starting Phase 2).
-const CurrentVersion = 2
+//
+// v3 (OPE-3045 B) splits the geodata source into GeositeSource /
+// GeoipSource (+ custom URLs, additions) and adds
+// Settings.DisabledTemplates. No data moves besides the geodata split;
+// older files load through migrate.
+const CurrentVersion = 3
 
 // fileMode / dirMode are the production permissions (NFR-2.3).
 const (
@@ -62,7 +67,8 @@ func DefaultState() *model.State {
 		Settings: model.Settings{
 			UIPort:               8090,
 			Lang:                 "ru",
-			Geodata:              "runetfreedom",
+			GeositeSource:        "runetfreedom",
+			GeoipSource:          "runetfreedom",
 			DefaultPolicy:        model.Target{Type: model.TargetDirect},
 			DelayTestIntervalSec: 300,
 		},
@@ -90,7 +96,7 @@ func (s *Store) Load() (*model.State, error) {
 		return nil, fmt.Errorf("%w: file has %d, build supports %d",
 			ErrVersionTooNew, st.Version, CurrentVersion)
 	}
-	if err := migrate(st); err != nil {
+	if err := migrate(st, json.RawMessage(data)); err != nil {
 		return nil, err
 	}
 	return st, nil
@@ -102,7 +108,13 @@ func (s *Store) Load() (*model.State, error) {
 // (Phase 2, initial TZ 5.7.5): a stale v1 server has survived at least one
 // missed update, so the counter starts at 1 — giving it the full 2-update
 // grace window would overstate its freshness.
-func migrate(st *model.State) error {
+//
+// v2 → v3 (OPE-3045 B2): the single Settings.Geodata field is replaced by
+// GeositeSource + GeoipSource. The Go field is gone from the struct, so
+// the legacy value is read through a raw-JSON side struct here before the
+// split fields take over. An empty legacy value falls back to the
+// runetfreedom default (decision Q7). v3 files pass through untouched.
+func migrate(st *model.State, raw json.RawMessage) error {
 	if st.Version < 2 {
 		for i := range st.Servers {
 			if st.Servers[i].Stale && st.Servers[i].StaleMisses == 0 {
@@ -110,6 +122,36 @@ func migrate(st *model.State) error {
 			}
 		}
 		st.Version = 2
+	}
+	if st.Version < 3 {
+		legacy := ""
+		if len(raw) > 0 {
+			var side struct {
+				Settings struct {
+					Geodata string `json:"geodata"`
+				} `json:"settings"`
+			}
+			if err := json.Unmarshal(raw, &side); err == nil {
+				legacy = side.Settings.Geodata
+			}
+		}
+		switch legacy {
+		case "runetfreedom", "metacubex":
+			st.Settings.GeositeSource = legacy
+			st.Settings.GeoipSource = legacy
+		default:
+			// Empty (or a value from an even older writer): the
+			// documented default (decision Q7).
+			st.Settings.GeositeSource = "runetfreedom"
+			st.Settings.GeoipSource = "runetfreedom"
+		}
+		if st.Settings.GeositeSource == "" {
+			st.Settings.GeositeSource = "runetfreedom"
+		}
+		if st.Settings.GeoipSource == "" {
+			st.Settings.GeoipSource = "runetfreedom"
+		}
+		st.Version = 3
 	}
 	return nil
 }

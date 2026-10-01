@@ -211,25 +211,42 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 		checks = append(checks, probeMihomoAPI(ctx, s.monitor.MihomoAPIAddr, s.monitor.MihomoAPISecret))
 	}
 
-	// 3. geodata available (HEAD probe of the configured source).
+	// 3. geodata available (HEAD probe of the configured sources,
+	// OPE-3045 B2 split: geosite and geoip are configured separately
+	// and each gets its own check line).
 	st, err := s.load()
 	if err != nil {
 		s.unlock()
 		writeError(w, err)
 		return
 	}
-	src := geodata.SourceKind(st.Settings.Geodata)
+	set := st.Settings
 	s.unlock()
-	if !geodata.Valid(string(src)) {
-		src = geodata.Runetfreedom
-	}
+
 	checker := &geodata.Checker{}
-	avail := checker.Check(ctx, src)
-	gd := diagCheck{Name: "geodata", OK: avail.GeositeOK && avail.GeoipOK, Detail: string(src)}
-	if avail.Error != "" {
-		gd.Detail += ": " + avail.Error
+	// Geosite check (custom source without URL = config error, not a
+	// network failure — reported as not ok with the reason).
+	if _, uerr := geodata.URLFor(geodata.KindGeosite, set.GeositeSource, set.GeositeCustomURL); uerr != nil {
+		checks = append(checks, diagCheck{Name: "geodata-geosite", OK: false, Detail: uerr.Error()})
+	} else {
+		av := checker.CheckKind(ctx, geodata.KindGeosite, set.GeositeSource, set.GeositeCustomURL)
+		gd := diagCheck{Name: "geodata-geosite", OK: av.GeositeOK, Detail: set.GeositeSource}
+		if av.Error != "" {
+			gd.Detail += ": " + av.Error
+		}
+		checks = append(checks, gd)
 	}
-	checks = append(checks, gd)
+	// Geoip check.
+	if _, uerr := geodata.URLFor(geodata.KindGeoip, set.GeoipSource, set.GeoipCustomURL); uerr != nil {
+		checks = append(checks, diagCheck{Name: "geodata-geoip", OK: false, Detail: uerr.Error()})
+	} else {
+		av := checker.CheckKind(ctx, geodata.KindGeoip, set.GeoipSource, set.GeoipCustomURL)
+		gd := diagCheck{Name: "geodata-geoip", OK: av.GeoipOK, Detail: set.GeoipSource}
+		if av.Error != "" {
+			gd.Detail += ": " + av.Error
+		}
+		checks = append(checks, gd)
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"checks": checks})
 }

@@ -392,6 +392,26 @@ Phase 3 design decisions:
 <!-- Phase 6 decisions (D23-D28) live in docs/DECISIONS-phase6.md to
      keep this file at a reviewable size; the numbering continues. -->
 
+## WellBoard 25.12: вход, геоданные, пакет (01.10.2026)
+
+- **A1.** Вход в интерфейс выполняется паролем root роутера через ubus
+  `session login` — тот же бэкенд, что у LuCI; своей базы паролей нет
+  (решение Q5). Сессия WellBoard живёт в HttpOnly-cookie (12 ч), любые
+  изменения требует заголовок `X-CSRF-Token` (double-submit против
+  cookie); ubus-идентификатор сессии не сохраняется. Отключается
+  `option auth '0'` в UCI, `--no-auth` или dev-режимом.
+- **A2.** Источники geosite и geoip выбираются раздельно; значение
+  `custom` требует собственного URL; `geodata_additions` добавляет свои
+  домены/CIDR поверх выбранной категории.
+- **A3.** Пользовательские шаблоны и переопределения штатных лежат в
+  оверлее `/etc/wellboard/templates` (создание/правка/выключение в UI);
+  каталог пакета `/usr/share/wellboard/templates` не изменяется.
+- **A4 (проверено в rootfs).** apk-tools 3 (OpenWrt 24.10/25.12)
+  отвергает `.apk` в layout apk-v2 (`v2 package format error`) —
+  поэтому установка на 25.12 невозможна до перехода на формат apk-v3
+  (`apk mkpkg`). Контракты службы (UCI/procd/uci-defaults/keep.d) от
+  формата пакета не зависят.
+
 ## Risks
 
 - **RK1.** `nikki.mixin.api_secret` is a 6-digit pseudo-random number
@@ -424,6 +444,11 @@ Phase 3 design decisions:
 - **RK9.** The .apk files are unsigned (apk-v2 layout without
   .sign) and require `--allow-untrusted`; a release needs a signing
   key and/or a hosted feed before customer rollout.
+- **RK11.** Пакет `.apk` в layout apk-v2 не устанавливается
+  apk-tools 3 (OpenWrt 24.10+/25.12): `v2 package format error`
+  (проверено 01.10.2026 в `openwrt/rootfs:x86_64-25.12-SNAPSHOT`).
+  Нужен формат apk-v3 — задача релиза; до неё на 25.12 доступен только
+  ручной запуск бинарника, не установка пакета.
 - **RK10.** procd respawn was verified with kill -9 in the smoke
   container; `respawn_retry=0` (unlimited retries) is the convention
   copied from nikki but was not stress-tested against a crash-looping

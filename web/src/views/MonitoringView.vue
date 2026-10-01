@@ -51,7 +51,6 @@ const loading = computed(() => distPresent.value === null)
     <div v-else class="stub">
       <h2>{{ t('monitoring.missingTitle') }}</h2>
       <p>{{ t('monitoring.missingText') }}</p>
-      <pre class="cmd">scripts/fetch-metacubexd.sh</pre>
       <p class="hint">{{ t('monitoring.hint') }}</p>
     </div>
   </section>

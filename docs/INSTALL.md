@@ -8,8 +8,8 @@ WellBoard — менеджер подписки Remnawave для nikki/mihomo: �
 ## Содержание
 - [Требования](#требования)
 - [Установка .ipk (opkg)](#установка-ipk-opkg)
-- [Установка .apk (apk, OpenWrt 24.10+)](#установка-apk-apk-openwrt-2410)
-- [Первый запуск](#первый-запуск)
+- [Установка .apk (apk-tools, OpenWrt 24.10 и 25.12)](#установка-apk-apk-tools-openwrt-2410-и-2512)
+- [Первый запуск и вход](#первый-запуск-и-вход)
 - [Автозапуск](#автозапуск)
 - [Настройка (UCI)](#настройка-uci)
 - [Сохранность данных при sysupgrade](#сохранность-данных-при-sysupgrade)
@@ -23,6 +23,7 @@ WellBoard — менеджер подписки Remnawave для nikki/mihomo: �
 | `nikki` | прокси-стек: mihomo, UCI-интеграция, procd-сервис |
 | `ca-bundle` | TLS для запросов подписки |
 | `curl` / `wget` | загрузка геоданных и подписок |
+| `ubus` / `rpcd` | проверка пароля root при входе в интерфейс (входят в base OpenWrt) |
 | ~20 МБ RAM / ~30 МБ flash | Go-бинарь ~15 МБ + state-каталог |
 
 Пакет собран для архитектур: `aarch64_cortex-a53`,
@@ -50,33 +51,84 @@ opkg сам подтянет `ca-bundle` и `curl`; `nikki` должен быт�
 установлен заранее из [репозитория nikki](https://github.com/nikkinikki-org/OpenWrt-nikki)
 (см. его README) — он не входит в стандартные репозитории OpenWrt.
 
-## Установка .apk (OpenWrt 24.10+)
+## Установка .apk (apk-tools, OpenWrt 24.10 и 25.12)
 
-OpenWrt 24.10 перешёл на apk; пакеты формата `.apk` ставятся так:
+> **Внимание (проверено на 25.12-SNAPSHOT).** Пакет `.apk` из
+> текущей сборки — в layout apk-v2 (`.PKGINFO` в корне tar). Менеджер
+> apk-tools 3, штатный в 24.10/25.12, такие пакеты **не принимает**:
+> `ERROR: …: v2 package format error`. Установка на 25.12 станет
+> возможной после сборки пакета формата apk-v3 (`apk mkpkg` из
+> apk-tools 3, как в buildroot OpenWrt) — отдельная задача релиза.
+> Контракты службы (UCI/procd/uci-defaults/keep.d) от формата не
+> зависят; на 23.05/24.10 с opkg путь ниже работает (.ipk).
+
+OpenWrt 24.10 перешёл с opkg на apk; в 25.12 apk — штатный менеджер
+пакетов, `opkg` в системе нет. Порядок установки `.apk`:
 
 ```sh
+# 0) версия и менеджер пакетов
+cat /etc/openwrt_release            # VERSION / DISTRIB_RELEASE (например, 25.12.0)
+apk --version                       # apk-tools 3.x
+
+# 1) зависимости
 apk update
-apk add nikki mihomo        # из стороннего репозитория nikki
-scp wellboard-*-arm_cortex-v7.apk root@192.168.1.1:/tmp/
-apk add --allow-untrusted /tmp/wellboard-*-arm_cortex-v7.apk
+apk add nikki mihomo                # из стороннего репозитория nikki
+
+# 2) сам пакет (файл на роутере, например через scp)
+scp wellboard-<arch>.apk root@192.168.1.1:/tmp/
+apk add --allow-untrusted /tmp/wellboard-<arch>.apk
+
+# 3) состав установки и запуск
+apk info -L wellboard | head
+/etc/init.d/wellboard status
 ```
 
 `--allow-untrusted` нужен для локального неподписанного пакета; при
 подключённом репозитории WellBoard подпись проверяется штатно.
 
-## Первый запуск
+**Контракты, на которые опирается пакет** (от версии не зависят):
+`/etc/config/wellboard` (UCI), `/etc/init.d/wellboard` (procd,
+`START=99`), `/etc/uci-defaults/` (первичная настройка),
+`/lib/upgrade/keep.d/wellboard` (сохранение `state_dir` при
+sysupgrade). Проверить пакет без роутера можно в rootfs целевой ветки (тот же
+набор команд используется при приёмке):
+
+```sh
+docker run --rm -v "$PWD/dist:/pkg:ro" openwrt/rootfs:x86_64-25.12-SNAPSHOT \
+  sh -c 'apk add --allow-untrusted /pkg/wellboard-*.apk'
+# после успешной установки (пакет apk-v3):
+#   sh /etc/uci-defaults/99_wellboard
+#   /etc/init.d/wellboard enable && /etc/init.d/wellboard start
+#   wget -q -O- http://127.0.0.1:8090/api/v1/health
+```
+
+Вход проверяется в том же rootfs: поднять `ubusd` и `rpcd`, задать
+пароль root, затем `POST /api/v1/auth/login` (пример в `docs/API.md`).
+
+## Первый запуск и вход
 
 Сервис стартует автоматически при установке (`enabled '1'` в
 `/etc/config/wellboard` + uci-defaults вызывает
 `/etc/init.d/wellboard enable`).
 
-1. Откройте `http://<ip-роутера>:8090/` — запустится мастер первого
-   запуска: подписка → политика по умолчанию → первый шаблон.
-2. Вставьте ссылку подписки Remnawave, следуйте шагам мастера.
-3. Нажмите **Применить** — WellBoard проверит конфиг (`mihomo -t`),
+1. Откройте `http://<ip-роутера>:8090/`. Появится экран входа —
+   введите **пароль root роутера** (тот же, что для LuCI). Пароль
+   проверяется через ubus и нигде не сохраняется; своя учётная запись
+   не заводится. Если вход отключён (`option auth '0'`), панель
+   откроется сразу.
+2. Панель открывается на главном экране. Мастер первого запуска
+   автоматически не всплывает — он вызывается кнопкой **«Запустить
+   мастер настройки»** в Настройках (подписка → политика по
+   умолчанию → первый шаблон).
+3. Существующие правила из nikki можно посмотреть, не меняя конфиг:
+   вкладка **Маршруты → Внешние правила nikki** (только чтение) или
+   кнопка импорта подписки в Настройках. Конфиг `/etc/nikki`
+   WellBoard не изменяет до нажатия **Применить**.
+4. Нажмите **Применить** — WellBoard проверит конфиг (`mihomo -t`),
    активирует профиль nikki и проконтролирует здоровье.
-4. Кнопка мониторинга открывает MetaCubeXD (нужен запуск
-   `scripts/fetch-metacubexd.sh` — см. README).
+
+Сессия живёт 12 часов; перезапуск службы требует повторного входа.
+Выход — кнопка **Выйти** в шапке.
 
 Проверка живости из консоли:
 
@@ -110,16 +162,20 @@ config wellboard 'main'
     option port '8090'
     # Адрес прослушивания (NFR-2.1): unset — только LAN (br-lan, рекомендуется);
     # IP ('192.168.1.1') или имя интерфейса ('br-lan') — явно;
-    # пусто ('') — все интерфейсы, включая WAN: НЕ рекомендуется
-    # без firewall-правил (аутентификации в v1 нет).
+    # пусто ('') — все интерфейсы, включая WAN: НЕ рекомендуется,
+    # даже со включённым входом.
     #option bind 'br-lan'
     option state_dir '/etc/wellboard'
     option templates_dir '/usr/share/wellboard/templates'
+    # Вход по паролю root роутера (проверка через ubus) + CSRF.
+    # 1 — включён (по умолчанию), 0 — выключен (только доверенная сеть).
+    option auth '1'
 ```
 
 Изменения применяются после `/etc/init.d/wellboard restart`.
 Секрет API mihomo не хранится в этом конфиге — WellBoard читает
-`nikki.mixin.api_secret` в рантайме.
+`nikki.mixin.api_secret` в рантайме. Флаг `--no-auth` у бинарника и
+переменная `WELLBOARD_AUTH` делают то же, что `option auth`.
 
 ## Сохранность данных при sysupgrade
 
@@ -152,5 +208,19 @@ cat /var/log/wellboard.log        # собственный лог WellBoard
 /etc/init.d/wellboard status      # ответ /api/v1/health
 curl http://127.0.0.1:8090/api/v1/diagnostics   # точечные проверки
 ```
+
+Вход и ubus:
+
+```sh
+logread | grep 'auth:'            # "auth: enabled, ubus login as "root"…"
+ubus call session login '{"username":"root","password":"…"}'   # проверка ubus
+```
+
+- `503` при входе — ubus не отвечает (служба `rpcd`/`ubus` не
+  запущена), это не «неверный пароль».
+- `401` — пароль не подошёл; `429` — 5 неудач с одного адреса за
+  минуту, подождите минуту.
+
+Полный перечень HTTP-маршрутов — в `docs/API.md`.
 
 См. также `docs/DECISIONS.md` (архитектурные решения) и README.

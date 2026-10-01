@@ -26,6 +26,7 @@ import (
 	"github.com/wellboard/wellboard/internal/api"
 	"github.com/wellboard/wellboard/internal/applog"
 	"github.com/wellboard/wellboard/internal/apply"
+	"github.com/wellboard/wellboard/internal/auth"
 	"github.com/wellboard/wellboard/internal/lan"
 	"github.com/wellboard/wellboard/internal/model"
 	"github.com/wellboard/wellboard/internal/nikki"
@@ -55,6 +56,9 @@ var (
 	leasesFlag    = flag.String("leases", "", "DHCP leases file override (dev fixtures)")
 	mihomoBinFlag = flag.String("mihomo", "", "local mihomo binary for the dry-run stand (default: ./bin/mihomo in dev)")
 	bindFlag      = flag.String("bind", "", "listen address: an IP, an interface name (e.g. br-lan) or empty; prod default: "+lanInterface+" IP, dev: 127.0.0.1")
+	authFlag      = flag.Bool("auth", false, "require the router password (ubus login); default: on outside dev mode")
+	noAuthFlag    = flag.Bool("no-auth", false, "disable authentication (loopback development stands only)")
+	ubusURLFlag   = flag.String("ubus-url", "", "ubus JSON-RPC bridge (default "+auth.DefaultUbusURL+")")
 )
 
 // Dev-stand transport (TZ §5.10: DryRun + local mihomo): mixed-port,
@@ -173,7 +177,19 @@ func main() {
 
 	// Template catalog (FR-5): fatal in prod (the package is broken),
 	// warning-only in dev (the dir may be absent in a bare checkout).
-	catalog, err := templates.Load(tplDir)
+	// OPE-3045 B1: the user overlay (<state_dir>/templates; /etc/
+	// wellboard/templates in prod) is merged on top — custom templates
+	// and builtin overrides survive sysupgrade via keep.d (it covers
+	// all of /etc/wellboard).
+	overlayDir := filepath.Join(stateDir, "templates")
+	if err := os.MkdirAll(overlayDir, 0o755); err != nil {
+		if dev {
+			log.Printf("warning: templates overlay: %v", err)
+		} else {
+			log.Fatalf("templates overlay: %v", err)
+		}
+	}
+	catalog, err := templates.LoadMerged(tplDir, overlayDir)
 	if err != nil {
 		if dev {
 			log.Printf("warning: templates: %v (template API disabled)", err)
@@ -181,8 +197,12 @@ func main() {
 			log.Fatalf("templates: %v", err)
 		}
 	}
+	for _, warn := range catalog.Warnings {
+		log.Printf("warning: templates: %v", warn)
+	}
 
 	srv := api.NewServer(stStore, catalog)
+	srv.SetOverlayDir(overlayDir)
 	srv.SetLog(func(format string, args ...any) { log.Printf(format, args...) })
 
 	// LAN devices (FR-4.4): lease file + ubus fallback; dev mode uses the
@@ -229,9 +249,49 @@ func main() {
 	// binary self-contained for testing.
 	mux.Handle("/", web.SPAHandler())
 
+	// Authentication (initial TZ Q5): the router's own root password
+	// over ubus. On outside dev mode by default — an unauthenticated
+	// admin API reachable from the LAN was the audit finding this
+	// covers. Runtime override: --auth / --no-auth / WELLBOARD_AUTH
+	// (set by /etc/init.d/wellboard from UCI wellboard.main.auth).
+	authEnabled := !dev
+	if *authFlag {
+		authEnabled = true
+	}
+	if *noAuthFlag {
+		authEnabled = false
+	}
+	if v := os.Getenv("WELLBOARD_AUTH"); v != "" && !*authFlag && !*noAuthFlag {
+		authEnabled = v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "on")
+	}
+	handler := http.Handler(mux)
+	ubusURL := *ubusURLFlag
+	if ubusURL == "" {
+		ubusURL = os.Getenv("WELLBOARD_UBUS_URL")
+	}
+	authCfg := &auth.Config{
+		Manager:  auth.NewManager(0),
+		Login:    (&auth.UbusClient{URL: ubusURL}).Login,
+		Disabled: !authEnabled,
+		Logf:     func(format string, args ...any) { log.Printf(format, args...) },
+	}
+	// The routes are always mounted: the SPA asks /api/v1/auth/session
+	// on boot and needs a truthful answer either way.
+	authCfg.RegisterRoutes(mux)
+	if authEnabled {
+		handler = authCfg.RequireAuth(mux)
+		url := ubusURL
+		if url == "" {
+			url = auth.DefaultUbusURL
+		}
+		log.Printf("auth: enabled, ubus login as %q via %s", auth.DefaultUsername, url)
+	} else {
+		log.Printf("auth: DISABLED (dev mode or --no-auth) — do not expose this port")
+	}
+
 	httpSrv := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

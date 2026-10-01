@@ -4,6 +4,7 @@ import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-rou
 // hash routing needs no server-side fallback for deep links.
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/dashboard' },
+  { path: '/login', component: () => import('./views/LoginView.vue') },
   { path: '/wizard', component: () => import('./views/WizardView.vue') },
   { path: '/dashboard', component: () => import('./views/DashboardView.vue') },
   { path: '/sources', component: () => import('./views/SourcesView.vue') },
@@ -21,12 +22,27 @@ export const router = createRouter({
   routes,
 })
 
-// Bootstrap: on the first navigation read settings (locale + whether the
-// first-run wizard should show) before any view mounts.
+// Guard order: (1) login — when the deployment requires it, every
+// screen except /login waits for a verified session; (2) bootstrap —
+// read settings (locale), sources and the pool before any view mounts.
+// OPE-3045: the first-run auto-redirect to /wizard is REMOVED — the
+// wizard is reachable only by explicit navigation (the button in
+// SettingsView); an empty state is handled by the per-screen hints.
 let bootstrapped = false
+
 router.beforeEach(async (to) => {
+  const { useAuthStore } = await import('./stores/auth')
+  const auth = useAuthStore()
+  if (!auth.checked) await auth.probe()
+
+  if (auth.required && !auth.authenticated) {
+    return to.path === '/login' ? true : { path: '/login' }
+  }
+  if (to.path === '/login') return { path: '/dashboard' }
+
   if (bootstrapped) return true
   bootstrapped = true
+
   const { useSettingsStore } = await import('./stores/settings')
   const { useSourcesStore } = await import('./stores/sources')
   const { usePoolStore } = await import('./stores/pool')
@@ -38,9 +54,18 @@ router.beforeEach(async (to) => {
   await sources.load().catch(() => {})
   const pool = usePoolStore()
   await pool.loadAll().catch(() => {})
-  // First run: empty state (no sources) → wizard.
-  if (to.path !== '/wizard' && sources.sources.length === 0 && settings.settings) {
-    return { path: '/wizard' }
-  }
   return true
 })
+
+// The API tells us when a session is gone (401): drop the local state
+// and send the browser to the login screen.
+export function installUnauthorizedRedirect() {
+  import('./api').then(({ setUnauthorizedHandler }) => {
+    setUnauthorizedHandler(() => {
+      import('./stores/auth').then(({ useAuthStore }) => {
+        useAuthStore().clear()
+        if (router.currentRoute.value.path !== '/login') router.push('/login').catch(() => {})
+      })
+    })
+  })
+}

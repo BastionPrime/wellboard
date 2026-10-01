@@ -8,11 +8,13 @@
 | Компонент | Минимальная / тестированная версия | Статус |
 |---|---|---|
 | OpenWrt | 23.05.x (пакет .ipk / opkg) | тестировалось: 23.05 API-контракт (UCI, procd, uci-defaults) |
-| OpenWrt | 24.10.x (пакет .ipk и .apk) | тестировалось: контракты те же; .apk собран, установка через `--allow-untrusted` |
+| OpenWrt | 24.10.x (пакет .ipk и .apk) | тестировалось: контракты те же; `.apk` layout v2 — принимается apk-tools 2 (opkg-сборки); на apk-tools 3 отвергается (см. 25.12) |
 | OpenWrt | snapshot (apk, r34693) | тестировалось: смоук в `openwrt/rootfs:x86-64` (SNAPSHOT) |
+| OpenWrt | 25.12.x (apk-tools 3) | контракты службы те же, но **`.apk` требует формата apk-v3**: текущий v2-layout отвергается (`v2 package format error`). Проверено в rootfs 25.12-SNAPSHOT (см. ниже) |
 | mihomo | v1.19.31 | тестировалось: e2e (валидация `-t`, живой инстанс, /connections, откат) |
 | nikki | main @ 2026-09-18 (nikkinikki-org/OpenWrt-nikki) | тестировалось: контракт путей/UCI/mixin по клону (DECISIONS N1-N7) |
 | Go | 1.22+ (сборка в golang:1.23-alpine) | go.mod: `go 1.22` |
+| ubus | любой OpenWrt ≥ 18.06 (`session login` через rpcd) | тестировалось: контракт `session`-объекта (пример в документации OpenWrt) |
 
 ## OpenWrt 23.05 / 24.10 / snapshot
 
@@ -31,6 +33,48 @@
   использованием только базовых UCI/procd-механизмов.
 - Приёмка «устанавливается на 23.05/24.10/snapshot» на реальном
   железе — пункт MANUAL_TEST (у владельца, BPI-R4).
+
+## OpenWrt 25.12 (apk-tools 3)
+
+- **Менеджер пакетов:** в 25.12 `apk` (apk-tools 3.x) — штатный;
+  `opkg` отсутствует.
+- **Формат пакета (проверено, блокер):** `scripts/package-apk.sh`
+  собирает локальный `.apk` в layout apk-v2 (`.PKGINFO` в корне
+  tar-архива). apk-tools 3 такой пакет **отвергает**:
+
+  ```
+  # apk add --allow-untrusted /tmp/wellboard-1.0.4-r1-x86_64.apk
+  ERROR: /tmp/wellboard-1.0.4-r1-x86_64.apk: v2 package format error
+  ```
+
+  Лог проверки: rootfs `openwrt/rootfs:x86_64-25.12-SNAPSHOT`
+  (r33249), `apk-tools 3.0.5`. Нужен пакет формата **apk-v3**
+  (в OpenWrt 25.12 такие пакеты собирает buildroot через
+  `$(STAGING_DIR_HOST)/bin/apk mkpkg`); это отдельная задача релиза —
+  до неё установка на 25.12 невозможна. Контракты внутри пакета
+  (UCI/procd/uci-defaults/keep.d) от формата не зависят и проверены
+  на 23.05/24.10/snapshot.
+- **Проверка после перехода на apk-v3:**
+
+  ```sh
+  docker run --rm -v /tmp:/tmp openwrt/rootfs:x86_64-25.12-SNAPSHOT \
+    sh -c 'apk --version; apk add --allow-untrusted /tmp/wellboard-x86_64.apk'
+  ```
+- **Контракты** пакета от версии не зависят и в 25.12 не менялись:
+  UCI (`/etc/config/wellboard`), procd (`/etc/init.d/wellboard`,
+  `START=99`), `/etc/uci-defaults`, `/lib/upgrade/keep.d`.
+- **Вход по паролю root** опирается на объект `session` в ubus
+  (`session login`), который предоставляет `rpcd` (входит в base
+  OpenWrt). Интерфейс тот же в 23.05/24.10/25.12; при выключенном
+  `rpcd` вход вернёт `503`, для таких сборок есть
+  `option auth '0'` / `--no-auth`.
+- **Вход проверен живьём на 25.12** (тот же rootfs): подняты `ubusd` и
+  `rpcd` из образа, пароль root задан в `/etc/shadow`, бинарник запущен
+  в prod-режиме. Результат: `GET /api/v1/state` без сессии → `401`;
+  неверный пароль → `401 invalid password`; верный пароль → `200` +
+  `csrf` (проверка через реальный `ubus call session login`); запрос с
+  CSRF-заголовком выполняется, без него и с чужим `Origin` → `403`;
+  logout → `204` и `401` после него. Лог приложен к задаче.
 
 ## mihomo
 
@@ -91,6 +135,13 @@ Depends: ca-bundle, curl, nikki
   включая apply → health → автооткат. Зелёные на 2026-09-20.
 - Смоук в OpenWrt rootfs: см. DECISIONS-phase6 D24 (SNAPSHOT x86-64
   docker).
+- Проверка 25.12 (apk-tools 3), 01.10.2026: docker
+  `openwrt/rootfs:x86_64-25.12-SNAPSHOT` (r33249, apk-tools 3.0.5) —
+  `apk add --allow-untrusted` для собранного `.apk` даёт
+  `v2 package format error` (формат пакета, не контракты службы);
+  `ubusd`/`rpcd` в rootfs поднимаются, объект `session` в `ubus list`
+  присутствует — бэкенд входа по паролю root доступен, как в
+  23.05/24.10. Лог приложен к задаче WellBoard 25.12.
 - Контракт nikki/Remnawave: клон-снимки Phase 0 (DECISIONS.md, разделы
   N/R/C) — строки перепроверены 2026-09-19/20.
 - Юнит-тесты (полный `go test ./...`) — зелёные на 2026-09-20, ветка
@@ -98,7 +149,13 @@ Depends: ca-bundle, curl, nikki
 
 ## Известные несовместимости / ограничения
 
-- .apk не подписан → `--allow-untrusted` (RK9).
+- .apk не подписан → `--allow-untrusted` (RK9). Формат архива —
+  apk-v2 (`.PKGINFO` в корне tar): его принимает apk-tools 2, но
+  **не** apk-tools 3 (OpenWrt 25.12) — см. раздел 25.12. Сборка
+  пакета через apk-tools 3 (`apk mkpkg`) и подключение фида — предмет
+  отдельной задачи релиза.
+- Вход требует работающего `rpcd` (объект `session` в ubus); на
+  сборках без него вход отключается через `option auth '0'`.
 - nikki main — движущаяся цель; зафиксирован снимок 2026-09-18.
 - metacubexd (UI мониторинга) не версионируется в репо (fetch-скрипт,
   DECISIONS D18); не влияет на совместимость ядра.

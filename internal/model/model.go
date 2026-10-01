@@ -24,15 +24,36 @@ type Settings struct {
 	UIPort int `json:"ui_port"`
 	// Lang is the UI language: "ru" (default) or "en" (decision Q11).
 	Lang string `json:"lang"`
-	// Geodata is the geodata source: "runetfreedom" (default) or "metacubex"
-	// (decision Q7, FR-5.4).
-	Geodata string `json:"geodata"`
-	// DefaultPolicy is the MATCH policy for traffic matched by no rule
-	// (FR-4.6, decision Q3: user-configurable, default DIRECT).
-	DefaultPolicy Target `json:"default_policy"`
 	// DelayTestIntervalSec is how often proxy groups re-test latency
 	// (FR-9.1).
 	DelayTestIntervalSec int `json:"delay_test_interval_sec"`
+	// DefaultPolicy is the MATCH policy for traffic matched by no rule
+	// (FR-4.6, decision Q3: user-configurable, default DIRECT).
+	DefaultPolicy Target `json:"default_policy"`
+	// GeositeSource is the geosite.dat source: "runetfreedom"
+	// (default), "metacubex" or "custom" (OPE-3045 B2: the geodata
+	// source is split per file kind; the v2 single "geodata" field is
+	// migrated to both).
+	GeositeSource string `json:"geosite_source"`
+	// GeoipSource is the geoip.dat source (same value set).
+	GeoipSource string `json:"geoip_source"`
+	// GeositeCustomURL is the custom geosite.dat URL used when
+	// GeositeSource == "custom".
+	GeositeCustomURL string `json:"geosite_custom_url,omitempty"`
+	// GeoipCustomURL is the custom geoip.dat URL (GeoipSource ==
+	// "custom").
+	GeoipCustomURL string `json:"geoip_custom_url,omitempty"`
+	// GeodataAdditions appends user entries to geodata categories:
+	// key "geosite:<category>" → extra domains, "geoip:<category>" →
+	// extra CIDRs. The generator emits them as DOMAIN-SUFFIX / IP-CIDR
+	// rules right after the corresponding GEOSITE/GEOIP rule, aimed at
+	// the same route group. Categories not referenced by any route are
+	// ignored (documented in the generator).
+	GeodataAdditions map[string][]string `json:"geodata_additions,omitempty"`
+	// DisabledTemplates hides template ids from the wizard and greys
+	// them in the Templates tab (OPE-3045 B1). Applies to builtin and
+	// custom ids alike; "disabling a builtin" is this list.
+	DisabledTemplates []string `json:"disabled_templates,omitempty"`
 }
 
 // SourceKind distinguishes subscriptions from the manual entry source.

@@ -214,13 +214,14 @@ func TestDiagnosticsEndpoint(t *testing.T) {
 			t.Fatalf("mihomo check should pass with the secret: %+v", c)
 		}
 	}
-	if !byName["nikki"] || !byName["geodata"] {
-		// geodata check needs network; tolerate a failure there but
-		// the check itself must exist.
+	// OPE-3045 B2: the geodata check is split per kind (geosite/geoip).
+	if !byName["nikki"] || !byName["geodata-geosite"] || !byName["geodata-geoip"] {
+		// geodata checks need network; tolerate a failure there but
+		// the checks themselves must exist.
 		t.Logf("checks: %+v (geodata may fail offline)", doc.Checks)
 	}
-	if len(doc.Checks) != 3 {
-		t.Fatalf("expected 3 checks, got %d", len(doc.Checks))
+	if len(doc.Checks) != 4 {
+		t.Fatalf("expected 4 checks, got %d", len(doc.Checks))
 	}
 }
 

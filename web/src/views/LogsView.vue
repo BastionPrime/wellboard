@@ -62,7 +62,10 @@ const checkLabel = (name: string) => {
     case 'mihomo':
       return t('logs.item.checkMihomo')
     case 'geodata':
-      return t('logs.item.checkGeodata')
+    case 'geodata-geosite':
+      return t('logs.item.checkGeodataGeosite')
+    case 'geodata-geoip':
+      return t('logs.item.checkGeodataGeoip')
     default:
       return name
   }

@@ -439,15 +439,15 @@ func TestSettingsPatch(t *testing.T) {
 	_, ts := newTestServer(t)
 	defer ts.Close()
 	code, body := do(t, ts, "GET", "/api/v1/settings", "")
-	if code != 200 || !strings.Contains(body, `"geodata":"runetfreedom"`) {
+	if code != 200 || !strings.Contains(body, `"geosite_source":"runetfreedom"`) {
 		t.Fatalf("default settings: %d %s", code, body)
 	}
-	code, body = do(t, ts, "PATCH", "/api/v1/settings", `{"geodata":"metacubex","lang":"en"}`)
-	if code != 200 || !strings.Contains(body, `"geodata":"metacubex"`) {
+	code, body = do(t, ts, "PATCH", "/api/v1/settings", `{"geosite_source":"metacubex","lang":"en"}`)
+	if code != 200 || !strings.Contains(body, `"geosite_source":"metacubex"`) {
 		t.Fatalf("patch: %d %s", code, body)
 	}
-	if code, _ := do(t, ts, "PATCH", "/api/v1/settings", `{"geodata":"bogus"}`); code != 400 {
-		t.Fatalf("bad geodata must 400, got %d", code)
+	if code, _ := do(t, ts, "PATCH", "/api/v1/settings", `{"geosite_source":"bogus"}`); code != 400 {
+		t.Fatalf("bad geosite_source must 400, got %d", code)
 	}
 	if code, _ := do(t, ts, "PATCH", "/api/v1/settings", `{"ui_port":99999}`); code != 400 {
 		t.Fatalf("bad port must 400, got %d", code)

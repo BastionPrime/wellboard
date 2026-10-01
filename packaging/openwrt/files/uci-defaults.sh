@@ -16,6 +16,7 @@ uci -q get wellboard.main >/dev/null || {
 	uci set wellboard.main.port='8090'
 	uci set wellboard.main.state_dir='/etc/wellboard'
 	uci set wellboard.main.templates_dir='/usr/share/wellboard/templates'
+	uci set wellboard.main.auth='1'
 	uci commit wellboard
 }
 

@@ -54,7 +54,7 @@ func storeDefault() *model.State {
 	return &model.State{
 		Version: 1,
 		Settings: model.Settings{
-			UIPort: 8090, Lang: "ru", Geodata: "runetfreedom",
+			UIPort: 8090, Lang: "ru", GeositeSource: "runetfreedom", GeoipSource: "runetfreedom",
 			DefaultPolicy:        model.Target{Type: model.TargetDirect},
 			DelayTestIntervalSec: 300,
 		},
@@ -281,8 +281,11 @@ func TestRouteOrdering(t *testing.T) {
 	if !(iA < iB && iB < iC) {
 		t.Errorf("rules out of order: a=%d b=%d c=%d\n%s", iA, iB, iC, s)
 	}
-	rulesSection := s[strings.Index(s, "rules:"):]
-	if !strings.HasSuffix(strings.TrimSpace(rulesSection), "MATCH,rt:default") {
+	// OPE-3045 B2: geox-url is emitted after the rules; the last RULE
+	// line is still MATCH,rt:default.
+	rulesSection := s[strings.Index(s, "rules:"):strings.Index(s, "geox-url:")]
+	lastRule := strings.TrimSpace(strings.SplitN(strings.TrimSpace(rulesSection), "\n", 2)[1])
+	if !strings.HasSuffix(lastRule, "MATCH,rt:default") {
 		t.Errorf("MATCH,rt:default must be the last rule:\n%s", s)
 	}
 }

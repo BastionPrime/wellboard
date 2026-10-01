@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { useSourcesStore } from '../stores/sources'
@@ -19,6 +19,9 @@ const pool = usePoolStore()
 const step = ref(1)
 const error = ref('')
 const done = ref(false)
+
+// OPE-3045 B1: disabled templates are not offered in the wizard.
+const offeredTemplates = computed(() => pool.templates.filter((tpl) => !tpl.disabled))
 
 const form = reactive({
   name: '',
@@ -135,12 +138,12 @@ async function finish() {
           <span>{{ t('templates.title') }}</span>
           <select v-model="form.template">
             <option value="">{{ t('wizard.skip') }}</option>
-            <option v-for="tpl in pool.templates" :key="tpl.id" :value="tpl.id">{{ tpl.name }}</option>
+            <option v-for="tpl in offeredTemplates" :key="tpl.id" :value="tpl.id">{{ tpl.name }}</option>
           </select>
         </label>
-        <div v-if="pool.templates.length" class="tpl-cards">
+        <div v-if="offeredTemplates.length" class="tpl-cards">
           <div
-            v-for="tpl in pool.templates"
+            v-for="tpl in offeredTemplates"
             :key="tpl.id"
             class="tpl-card"
             :class="{ selected: form.template === tpl.id }"
