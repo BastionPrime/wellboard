@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { t, setLocale, getLocale } from './i18n'
 import { useSettingsStore } from './stores/settings'
 import { useApplyStore } from './stores/apply'
+import { useAuthStore } from './stores/auth'
 import { APIError } from './api'
 
 // Shell: header + horizontal-scroll nav (works at 360px, NFR-7) +
@@ -11,8 +12,10 @@ import { APIError } from './api'
 // The apply bar (FR-6.1 indicator + Apply/Rollback buttons) sits under
 // the nav on every screen except the wizard.
 const route = useRoute()
+const router = useRouter()
 const settings = useSettingsStore()
 const apply = useApplyStore()
+const auth = useAuthStore()
 
 const navItems = [
   { path: '/dashboard', key: 'nav.dashboard' },
@@ -35,6 +38,12 @@ function toggleLang() {
 }
 
 const isWizard = computed(() => route.path === '/wizard')
+const isLogin = computed(() => route.path === '/login')
+
+async function doLogout() {
+  await auth.logout()
+  router.push('/login').catch(() => {})
+}
 
 // FR-6 bar: pending indicator poll + explicit actions.
 let poller: ReturnType<typeof setInterval> | null = null
@@ -85,18 +94,27 @@ const resultBanner = computed(() => {
         <span class="brand-name">WellBoard</span>
       </div>
       <div class="spacer" />
+      <span v-if="auth.required && auth.authenticated" class="who">{{ auth.username }}</span>
+      <button
+        v-if="auth.required && auth.authenticated"
+        class="logout-btn"
+        type="button"
+        @click="doLogout"
+      >
+        {{ t('auth.signOut') }}
+      </button>
       <button class="lang-btn" type="button" @click="toggleLang" :title="t('settings.language')">
         {{ lang === 'ru' ? 'EN' : 'RU' }}
       </button>
     </header>
-    <nav v-if="!isWizard" class="nav" aria-label="main">
+    <nav v-if="!isWizard && !isLogin" class="nav" aria-label="main">
       <router-link v-for="item in navItems" :key="item.path" :to="item.path" class="nav-link">
         {{ t(item.key) }}
       </router-link>
     </nav>
 
     <!-- FR-6: unapplied-changes indicator + Apply / Rollback. -->
-    <div v-if="!isWizard" class="applybar">
+    <div v-if="!isWizard && !isLogin" class="applybar">
       <span class="pending" :class="{ changed: apply.pending === true }">
         <span class="dot" :class="{ changed: apply.pending === true }" />
         {{ apply.pending === true ? t('apply.pending') : apply.pending === false ? t('apply.applied') : '…' }}
@@ -158,6 +176,23 @@ const resultBanner = computed(() => {
 }
 .spacer {
   flex: 1;
+}
+.who {
+  font-size: 0.85rem;
+  color: #5a6472;
+  margin-right: 6px;
+}
+.logout-btn {
+  border: 1px solid #ccc;
+  background: #f6f6f6;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-right: 6px;
+}
+.logout-btn:active {
+  background: #e8e8e8;
 }
 .lang-btn {
   border: 1px solid #ccc;

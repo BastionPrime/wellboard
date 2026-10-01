@@ -1,4 +1,12 @@
 {
+  "auth.title": "Sign in",
+  "auth.subtitle": "Enter the router root password — the same one used for LuCI. The password is verified by ubus and is never stored by WellBoard.",
+  "auth.password": "Root password",
+  "auth.signIn": "Sign in",
+  "auth.signingIn": "Checking…",
+  "auth.signOut": "Sign out",
+  "auth.failed": "Sign-in failed: {msg}",
+  "auth.sessionExpired": "Session expired — please sign in again.",
   "common.edit": "Edit",
   "common.loading": "Loading…",
   "common.error": "Error",

@@ -50,6 +50,19 @@ vi.mock('./i18n', () => ({
   setLocale: () => {},
 }))
 
+// OPE-3402: the guard now asks the auth store first. Required+verified
+// is the deployment default assumption here; the login cases below flip
+// the stub to required+unauthenticated.
+const authStub = {
+  required: false,
+  authenticated: true,
+  username: '',
+  checked: true,
+  probe: () => Promise.resolve(true),
+  clear: () => {},
+}
+vi.mock('./stores/auth', () => ({ useAuthStore: () => authStub }))
+
 async function freshRouter(): Promise<Router> {
   const mod = await import('./router')
   return mod.router
@@ -58,6 +71,8 @@ async function freshRouter(): Promise<Router> {
 describe('router first-run behavior (OPE-3045 A1)', () => {
   beforeEach(() => {
     vi.resetModules()
+    authStub.required = false
+    authStub.authenticated = true
   })
 
   it('does not redirect /dashboard to /wizard on empty sources', async () => {
@@ -77,6 +92,39 @@ describe('router first-run behavior (OPE-3045 A1)', () => {
   it('redirects / to /dashboard (unchanged default)', async () => {
     const router = await freshRouter()
     await router.push('/')
+    await router.isReady()
+    expect(router.currentRoute.value.path).toBe('/dashboard')
+  })
+})
+
+describe('router login gate (OPE-3402)', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  it('sends an unauthenticated visitor to /login when login is required', async () => {
+    authStub.required = true
+    authStub.authenticated = false
+    const router = await freshRouter()
+    await router.push('/settings')
+    await router.isReady()
+    expect(router.currentRoute.value.path).toBe('/login')
+  })
+
+  it('lets /login render when login is required', async () => {
+    authStub.required = true
+    authStub.authenticated = false
+    const router = await freshRouter()
+    await router.push('/login')
+    await router.isReady()
+    expect(router.currentRoute.value.path).toBe('/login')
+  })
+
+  it('skips the login screen when the deployment has no login', async () => {
+    authStub.required = false
+    authStub.authenticated = true
+    const router = await freshRouter()
+    await router.push('/login')
     await router.isReady()
     expect(router.currentRoute.value.path).toBe('/dashboard')
   })

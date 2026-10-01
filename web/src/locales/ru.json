@@ -1,4 +1,12 @@
 {
+  "auth.title": "Вход",
+  "auth.subtitle": "Введите пароль root роутера — тот же, что для LuCI. Пароль проверяет ubus, WellBoard его не хранит.",
+  "auth.password": "Пароль root",
+  "auth.signIn": "Войти",
+  "auth.signingIn": "Проверяем…",
+  "auth.signOut": "Выйти",
+  "auth.failed": "Не удалось войти: {msg}",
+  "auth.sessionExpired": "Сессия истекла — войдите заново.",
   "common.edit": "Изменить",
   "common.loading": "Загрузка…",
   "common.error": "Ошибка",

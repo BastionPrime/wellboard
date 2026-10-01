@@ -197,21 +197,69 @@ export class APIError extends Error {
   }
 }
 
+// --- authentication (OPE-3402) -------------------------------------------
+//
+// The CSRF token lives in memory only: it is issued by the login /
+// session endpoints and repeated in the X-CSRF-Token header on every
+// state-changing request (double-submit against the HttpOnly wb_csrf
+// cookie the server sets at login).
+let csrfToken = ''
+
+export function setCSRFToken(token: string) {
+  csrfToken = token
+}
+
+export function getCSRFToken(): string {
+  return csrfToken
+}
+
+// setUnauthorizedHandler wires the 401 reaction (session expired or the
+// daemon restarted): main.ts redirects to the login screen.
+let unauthorizedHandler: (() => void) | null = null
+
+export function setUnauthorizedHandler(fn: (() => void) | null) {
+  unauthorizedHandler = fn
+}
+
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+function parseBody(text: string): Record<string, unknown> {
+  if (!text) return {}
+  try {
+    return JSON.parse(text) as Record<string, unknown>
+  } catch {
+    // Non-JSON answer (a proxy error page, the SPA fallback): keep the
+    // status meaningful instead of throwing a parse error.
+    return {}
+  }
+}
+
 // api fetches a WellBoard API endpoint (same origin in production; the
-// Vite dev server proxies /api to localhost:8090). JSON in/out.
+// Vite dev server proxies /api to localhost:8090). JSON in/out, cookies
+// included, CSRF header on mutations.
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((init?.headers as Record<string, string> | undefined) ?? {}),
+  }
+  if (csrfToken && MUTATING_METHODS.has(method)) headers['X-CSRF-Token'] = csrfToken
   const res = await fetch('/api/v1' + path, {
+    credentials: 'same-origin',
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
+    headers,
   })
   if (res.status === 204) return undefined as T
   const text = await res.text()
-  const body = text ? JSON.parse(text) : {}
+  const body = parseBody(text)
+  if (res.status === 401 && unauthorizedHandler) unauthorizedHandler()
   if (!res.ok) {
-    throw new APIError(res.status, body.error ?? res.statusText, body.problems, body.routes)
+    throw new APIError(
+      res.status,
+      (body.error as string) ?? res.statusText,
+      body.problems as string[] | undefined,
+      body.routes as string[] | undefined,
+    )
   }
   return body as T
 }
