@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// OPE-3045 A3 tests. Secret rule: fixtures use FAKE URLs
+// A3 tests. Secret rule: fixtures use FAKE URLs
 // (https://example.invalid/…) only; assertions never echo a full URL
 // into the test output.
 
@@ -88,7 +88,7 @@ func TestImportNikkiCreatesSources(t *testing.T) {
 		}
 	}
 	// The response of this NEW endpoint must not leak the subscription
-	// URL (review blocker on OPE-3045 A3).
+	// URL (review blocker on A3).
 	if strings.Contains(body, "example.invalid") && strings.Contains(body, "/nikki/") {
 		t.Fatal("import-nikki response leaked a full subscription URL")
 	}

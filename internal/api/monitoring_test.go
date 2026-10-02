@@ -214,7 +214,7 @@ func TestDiagnosticsEndpoint(t *testing.T) {
 			t.Fatalf("mihomo check should pass with the secret: %+v", c)
 		}
 	}
-	// OPE-3045 B2: the geodata check is split per kind (geosite/geoip).
+	// B2: the geodata check is split per kind (geosite/geoip).
 	if !byName["nikki"] || !byName["geodata-geosite"] || !byName["geodata-geoip"] {
 		// geodata checks need network; tolerate a failure there but
 		// the checks themselves must exist.

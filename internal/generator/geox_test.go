@@ -24,7 +24,7 @@ func geoState() *model.State {
 }
 
 // TestGeoXURLEmitted: geox-url is ALWAYS emitted — known defaults for
-// known sources (OPE-3045 B2 decision: keeps the profile explicit).
+// known sources (B2 decision: keeps the profile explicit).
 func TestGeoXURLEmitted(t *testing.T) {
 	out, err := Generate(geoState())
 	if err != nil {

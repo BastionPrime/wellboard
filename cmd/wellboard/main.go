@@ -173,7 +173,7 @@ func main() {
 
 	// Template catalog (FR-5): fatal in prod (the package is broken),
 	// warning-only in dev (the dir may be absent in a bare checkout).
-	// OPE-3045 B1: the user overlay (<state_dir>/templates; /etc/
+	// B1: the user overlay (<state_dir>/templates; /etc/
 	// wellboard/templates in prod) is merged on top — custom templates
 	// and builtin overrides survive sysupgrade via keep.d (it covers
 	// all of /etc/wellboard).

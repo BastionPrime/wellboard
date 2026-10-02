@@ -10,9 +10,9 @@ import { importNikkiSources, type Target, type TargetType, type GeodataSource } 
 // Settings (FR-9.1): language, UI port, geodata, delay interval, default
 // policy + read-only profile preview (FR-4.9, GET /api/v1/profile → YAML)
 // + state export/import (FR-6.5, Phase 7).
-// OPE-3045: the first-run wizard lives here as an explicit button
+// the first-run wizard lives here as an explicit button
 // (auto-redirect on empty state removed from router.ts).
-// OPE-3045 B2: geodata is split per kind (geosite/geoip), each with
+// B2: geodata is split per kind (geosite/geoip), each with
 // its own custom URL option, plus the geodata additions editor.
 const router = useRouter()
 const settings = useSettingsStore()
@@ -23,7 +23,7 @@ const error = ref('')
 const profileYaml = ref('')
 const importMsg = ref('')
 
-// OPE-3045 A3: masked sources list + nikki import. The full URL never
+// A3: masked sources list + nikki import. The full URL never
 // reaches this screen (masked_url only, secret rule).
 const sourcesSummary = ref<{ id: string; name: string; kind: string; masked_url: string; enabled: boolean }[]>([])
 const importResult = ref('')
@@ -251,7 +251,7 @@ async function importState(ev: Event) {
     </form>
     <p v-else class="muted">{{ t('common.loading') }}</p>
 
-    <!-- OPE-3045 B2: geodata additions (appended domains/CIDRs per
+    <!-- B2: geodata additions (appended domains/CIDRs per
          category; the generator emits them after the matching rule). -->
     <div class="additions">
       <h2>{{ t('settings.additionsTitle') }}</h2>

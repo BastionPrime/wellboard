@@ -51,11 +51,11 @@ type Server struct {
 	Store Store
 	// Catalog is the loaded template catalog (templates/ dir).
 	Catalog *templates.Catalog
-	// overlayDir is the user template overlay dir (OPE-3045 B1);
+	// overlayDir is the user template overlay dir (B1);
 	// template write/delete handlers 503 when it is unset.
 	overlayDir string
 	// geositeDatPaths is the probed .dat file list for the geosite
-	// tags endpoint (OPE-3045 B3); nil = the default probes.
+	// tags endpoint (B3); nil = the default probes.
 	geositeDatPaths []string
 	// lanReader lists DHCP devices (FR-4.4); wired via SetLAN.
 	lanReader LANReader
@@ -65,7 +65,7 @@ type Server struct {
 	// metacubexd/mihomo proxy); nil fields disable the endpoints.
 	monitor MonitorConfig
 	// nikkiPaths is the file list scanned by the nikki subscription
-	// import (OPE-3045 A3); nil = nikki.DefaultPathList().
+	// import (A3); nil = nikki.DefaultPathList().
 	nikkiPaths []string
 	// mu serializes load-modify-save cycles (single-writer; the store
 	// file is rewritten atomically but read-modify-write must not race).
@@ -81,13 +81,13 @@ func NewServer(st Store, catalog *templates.Catalog) *Server {
 	return &Server{Store: st, Catalog: catalog}
 }
 
-// SetOverlayDir wires the user template overlay directory (OPE-3045
+// SetOverlayDir wires the user template overlay directory (
 // B1): template create/edit/delete write files there. Passing an
 // empty string disables the write endpoints (503).
 func (s *Server) SetOverlayDir(dir string) { s.overlayDir = dir }
 
 // SetGeositeDatPaths overrides the .dat probe list of the geosite tags
-// endpoint (OPE-3045 B3; tests use fixture paths).
+// endpoint (B3; tests use fixture paths).
 func (s *Server) SetGeositeDatPaths(paths []string) { s.geositeDatPaths = paths }
 
 // ReloadCatalog re-runs templates.LoadMerged on the catalog's own dirs
@@ -350,7 +350,7 @@ func (s *Server) handleSourcesCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // ----------------------------------------------------------------------------
-// Sources: nikki import (OPE-3045 A3)
+// Sources: nikki import (A3)
 // ----------------------------------------------------------------------------
 
 // importNikkiIn is the import request body. An empty object works;
@@ -417,8 +417,8 @@ func (s *Server) handleSourcesImportNikki(w http.ResponseWriter, r *http.Request
 	}
 	s.log("nikki import: %d sources created (%d urls found)", imported, len(urls))
 	// The response carries MASKED rows only: a new API surface must not
-	// leak the subscription URL (secret rule; review fix on OPE-3045 A3
-	// carried into OPE-3401).
+	// leak the subscription URL (secret rule; review fix on A3
+	// carried into).
 	writeJSON(w, http.StatusOK, map[string]any{
 		"imported": imported,
 		"found":    len(urls),
@@ -1494,7 +1494,7 @@ func defaultImportName(ru *nikki.ExternalRule) string {
 // ----------------------------------------------------------------------------
 
 // templateOut is the API view of a catalog entry: the Template fields
-// plus the disabled flag (from settings, OPE-3045 B1).
+// plus the disabled flag (from settings, B1).
 type templateOut struct {
 	templates.Template
 	Disabled bool `json:"disabled"`
@@ -1561,7 +1561,7 @@ func (s *Server) handleTemplatesGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // templateIn is the create/update payload for a custom template
-// (OPE-3045 B1). Providers are optional and validated against the
+// (B1). Providers are optional and validated against the
 // shipped payload files.
 type templateIn struct {
 	ID            string                 `json:"id"`
@@ -1756,7 +1756,7 @@ func (s *Server) handleTemplatesDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// toggleIn is the disable/enable request body (OPE-3045 B1).
+// toggleIn is the disable/enable request body (B1).
 type toggleIn struct {
 	Disabled *bool `json:"disabled"`
 }
@@ -1828,7 +1828,7 @@ type applyIn struct {
 // handleTemplateApply creates a route from the template with the user's
 // target (FR-5.1/FR-5.2). The "all-vpn" template instead sets the
 // default policy (it has no conditions). Disabled templates refuse
-// with 409 (OPE-3045 B1: disabled = not offered; apply is explicit).
+// with 409 (B1: disabled = not offered; apply is explicit).
 func (s *Server) handleTemplateApply(w http.ResponseWriter, r *http.Request) {
 	if s.Catalog == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template catalog unavailable"})
@@ -1889,7 +1889,7 @@ func (s *Server) handleTemplateApply(w http.ResponseWriter, r *http.Request) {
 }
 
 // ----------------------------------------------------------------------------
-// Geodata tags (OPE-3045 B3)
+// Geodata tags (B3)
 // ----------------------------------------------------------------------------
 
 // handleGeodataTags returns the known geosite category tags for the
@@ -2009,7 +2009,7 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.unlock()
-	// OPE-3045 A3: the Settings PAGE shows sources with a masked URL
+	// A3: the Settings PAGE shows sources with a masked URL
 	// (secret rule: the full URL is not printed on the settings
 	// screen). The shape of the settings object itself is unchanged —
 	// sources_summary is an additional field.
@@ -2117,7 +2117,7 @@ func (s *Server) handleSettingsPatch(w http.ResponseWriter, r *http.Request) {
 		}
 		set.GeoipCustomURL = *in.GeoipCustomURL
 	}
-	// Full replace of the additions map (OPE-3045 B2). Custom-source
+	// Full replace of the additions map (B2). Custom-source
 	// URL presence is enforced at GENERATION time (the profile is
 	// where a custom source without a URL becomes an error) — here we
 	// validate what can be validated: source values and entry formats.
@@ -2359,7 +2359,7 @@ func isPortOrRange(v string) bool {
 }
 
 // validateGeodataAdditionEntry checks one additions value by kind
-// (OPE-3045 B2): "geosite" entries must look like domain suffixes,
+// (B2): "geosite" entries must look like domain suffixes,
 // "geoip" entries must be valid CIDRs (net.ParseCIDR — stricter than
 // isCIDR because the additions are always explicit CIDR lists).
 func validateGeodataAdditionEntry(kind, v string) error {

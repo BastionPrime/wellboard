@@ -22,7 +22,7 @@ export const router = createRouter({
 })
 
 // Bootstrap: on the first navigation read settings (locale), sources
-// and the pool before any view mounts. OPE-3045: the first-run
+// and the pool before any view mounts. the first-run
 // auto-redirect to /wizard is REMOVED — the wizard is reachable only
 // by explicit navigation (the button in SettingsView); an empty state
 // is handled by the per-screen empty-state hints.

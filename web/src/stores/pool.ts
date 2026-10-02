@@ -77,13 +77,13 @@ export const usePoolStore = defineStore('pool', {
       }
     },
     // loadTemplates re-reads the merged catalog (after template CRUD,
-    // OPE-3045 B1).
+    // B1).
     async loadTemplates() {
       const tp = await api<{ templates: Template[]; warnings?: string[] }>('/templates')
       this.templates = tp.templates ?? []
       this.templateWarnings = tp.warnings ?? []
     },
-    // Template CRUD (OPE-3045 B1): custom templates + builtin
+    // Template CRUD (B1): custom templates + builtin
     // overrides live in the overlay dir; the server reloads the
     // merged catalog on every write.
     async saveTemplate(input: TemplateInput, id?: string): Promise<Template> {
@@ -143,7 +143,7 @@ export const usePoolStore = defineStore('pool', {
       this.routes.push(out)
       return out
     },
-    // OPE-3401: import EVERY importable rule of the live nikki config
+    // import EVERY importable rule of the live nikki config
     // as a disabled route in one go. Read-only: the running config is
     // untouched until the owner presses Apply.
     async importExternalRulesAll(): Promise<ExternalImportAll> {

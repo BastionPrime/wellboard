@@ -59,7 +59,7 @@ async function importRule(raw: string) {
   }
 }
 
-// OPE-3401: import the whole live rule set in one go — every rule
+// import the whole live rule set in one go — every rule
 // becomes a DISABLED WellBoard route; nothing is applied and the
 // running nikki config is not touched.
 async function importAllRules() {

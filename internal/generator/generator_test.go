@@ -281,7 +281,7 @@ func TestRouteOrdering(t *testing.T) {
 	if !(iA < iB && iB < iC) {
 		t.Errorf("rules out of order: a=%d b=%d c=%d\n%s", iA, iB, iC, s)
 	}
-	// OPE-3045 B2: geox-url is emitted after the rules; the last RULE
+	// B2: geox-url is emitted after the rules; the last RULE
 	// line is still MATCH,rt:default.
 	rulesSection := s[strings.Index(s, "rules:") : strings.Index(s, "geox-url:")]
 	lastRule := strings.TrimSpace(strings.SplitN(strings.TrimSpace(rulesSection), "\n", 2)[1])

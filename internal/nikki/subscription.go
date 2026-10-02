@@ -10,9 +10,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Subscription discovery (OPE-3045 A3): read-only scan of the nikki
+// Subscription discovery (A3): read-only scan of the nikki
 // mihomo config files for proxy-providers[].url values. WellBoard
-// NEVER writes to /etc/nikki (invariant, see OPE-2982 external rules);
+// NEVER writes to /etc/nikki (invariant, see external rules);
 // this file only reads.
 //
 // The owner's subscription URL is a SECRET: discovered values must not

@@ -31,7 +31,7 @@ type Settings struct {
 	// (FR-4.6, decision Q3: user-configurable, default DIRECT).
 	DefaultPolicy Target `json:"default_policy"`
 	// GeositeSource is the geosite.dat source: "runetfreedom"
-	// (default), "metacubex" or "custom" (OPE-3045 B2: the geodata
+	// (default), "metacubex" or "custom" (B2: the geodata
 	// source is split per file kind; the v2 single "geodata" field is
 	// migrated to both).
 	GeositeSource string `json:"geosite_source"`
@@ -51,7 +51,7 @@ type Settings struct {
 	// ignored (documented in the generator).
 	GeodataAdditions map[string][]string `json:"geodata_additions,omitempty"`
 	// DisabledTemplates hides template ids from the wizard and greys
-	// them in the Templates tab (OPE-3045 B1). Applies to builtin and
+	// them in the Templates tab (B1). Applies to builtin and
 	// custom ids alike; "disabling a builtin" is this list.
 	DisabledTemplates []string `json:"disabled_templates,omitempty"`
 }
