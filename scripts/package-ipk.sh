@@ -1,21 +1,29 @@
 #!/bin/sh
-# Build a legacy .ipk package for wellboard / luci-app-wellboard.
+# Build a legacy .ipk with the real OpenWrt opkg toolchain
+# (`ipkg-build`, the script the buildroot itself uses) instead of
+# hand-rolling the ar archive.
 #
-# An .ipk is an `ar` archive containing:
-#   debian-binary  ("2.0")
-#   control.tar.gz (control file with Package/Version/Depends...)
-#   data.tar.gz    (the ./usr/... / ./etc/... rootfs tree)
-#
-# The file layout mirrors what packaging/openwrt/Makefile installs
-# (Package/<name>/install): same paths, same permissions. The OpenWrt
-# buildroot would produce the same tree; here we emulate it so the
-# package can be produced without a full buildroot checkout.
-#
-# Usage: package-ipk.sh <name> <version> <openwrt-arch> <src>
+# Usage: package-ipk.sh <name> <version> <arch> <src>
 #   name     wellboard | luci-app-wellboard
 #   version  package version (PKG_VERSION)
 #   arch     OpenWrt arch (x86_64, aarch64_cortex-a53, ... or "all")
 #   src      prebuilt binary (wellboard) — ignored for luci-app
+#
+# Toolchain resolution:
+#   1. $IPKG_BUILD           — explicit path to ipkg-build
+#   2. ipkg-build on PATH
+# Without one the script FAILS: it never falls back to a hand-made
+# archive (that is the whole point of this change).
+#
+# Where ipkg-build comes from: an OpenWrt buildroot/SDK checkout
+# (scripts/ipkg-build) or the standalone opkg-utils package.
+#   IPKG_BUILD=~/openwrt/scripts/ipkg-build scripts/package-ipk.sh ...
+# The build-matrix workflow downloads it before packaging.
+#
+# It also needs GNU tar and binutils ar (the buildroot provides both).
+# A busybox tar silently produces EMPTY control/data archives and a
+# busybox ar cannot create the archive at all — if the resulting .ipk
+# is a couple of dozen bytes, that is the toolchain, not the layout.
 
 set -eu
 
@@ -31,7 +39,7 @@ STAGE="$WORK/data"
 DIST="$ROOT/dist"
 trap 'rm -rf "$WORK"' EXIT
 
-mkdir -p "$STAGE" "$DIST"
+mkdir -p "$STAGE/CONTROL" "$DIST"
 
 case "$NAME" in
 wellboard)
@@ -50,12 +58,14 @@ wellboard)
     find "$STAGE/usr/share/wellboard/templates" -type d -exec chmod 0755 {} +
     find "$STAGE/usr/share/wellboard/templates" -type f -exec chmod 0644 {} +
     DEPENDS="ca-bundle, curl, nikki"
+    DESC="Remnawave subscription manager for nikki/mihomo (web UI on :8090)"
     ;;
 luci-app-wellboard)
     cp -r "$PKG/luci-app-wellboard/root/." "$STAGE/"
     mkdir -p "$STAGE/www"
     cp -r "$PKG/luci-app-wellboard/htdocs/." "$STAGE/www/"
     DEPENDS="luci-base, wellboard"
+    DESC="LuCI menu entry for the WellBoard web UI"
     ;;
 *)
     echo "unknown package: $NAME" >&2
@@ -63,7 +73,8 @@ luci-app-wellboard)
     ;;
 esac
 
-# control file (field set matches packaging/openwrt/Makefile)
+# CONTROL/control is the ipk metadata file ipkg-build reads and packs
+# into control.tar.gz (it also derives the output file name from it).
 {
     echo "Package: $NAME"
     echo "Version: $VERSION"
@@ -74,14 +85,20 @@ esac
     echo "Depends: $DEPENDS"
     echo "Source: wellboard"
     echo "License: AGPL-3.0-only"
-    echo "Description: Remnawave subscription manager for nikki/mihomo (web UI on :8090)"
-} > "$WORK/control"
+    echo "Description: $DESC"
+} > "$STAGE/CONTROL/control"
 
-( cd "$WORK" && echo 2.0 > debian-binary )
-( cd "$WORK" && tar czf control.tar.gz control )
-( cd "$STAGE" && tar czf "$WORK/data.tar.gz" . )
+IPKG_BUILD="${IPKG_BUILD:-$(command -v ipkg-build 2>/dev/null || true)}"
+if [ -z "$IPKG_BUILD" ] || [ ! -x "$IPKG_BUILD" ]; then
+    echo "package-ipk: ipkg-build not found." >&2
+    echo "  Provide the real opkg toolchain, e.g.:" >&2
+    echo "    IPKG_BUILD=<openwrt-checkout>/scripts/ipkg-build scripts/package-ipk.sh ..." >&2
+    echo "  (a hand-made ar archive is deliberately NOT produced)" >&2
+    exit 1
+fi
 
-OUT="$DIST/${NAME}_${VERSION}_${ARCH}.ipk"
-( cd "$WORK" && ar rc "$OUT" debian-binary control.tar.gz data.tar.gz )
+# ipkg-build packs $STAGE into $DIST/<Package>_<Version>_<Architecture>.ipk
+# (its CLI is: ipkg-build [-v] [-h] [-m modes] <pkg_directory> [<destination>]).
+"$IPKG_BUILD" "$STAGE" "$DIST" >/dev/null
 
-echo "built: $OUT"
+echo "built: $DIST/${NAME}_${VERSION}_${ARCH}.ipk"

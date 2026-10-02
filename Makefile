@@ -6,6 +6,10 @@
 
 GO_IMAGE ?= golang:1.23-alpine
 
+# Single source of truth for the release version (scripts/cross-compile.sh,
+# the packaging scripts and packaging/openwrt/Makefile read the same file).
+VERSION := $(shell cat VERSION)
+
 GO_DOCKER := docker run --rm -v $(CURDIR):/app -w /app \
   -e GOFLAGS=-mod=mod \
   -e CGO_ENABLED=0 \
@@ -16,7 +20,7 @@ GO_DOCKER := docker run --rm -v $(CURDIR):/app -w /app \
 .PHONY: build test vet fmt lint run clean cross
 
 build:
-	$(GO_DOCKER) go build -o wellboard ./cmd/wellboard
+	$(GO_DOCKER) go build -ldflags "-X main.version=$(VERSION)" -o wellboard ./cmd/wellboard
 
 test:
 	$(GO_DOCKER) go test ./...
