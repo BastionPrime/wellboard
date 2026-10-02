@@ -35,12 +35,37 @@ func KnownGeositeTags(datPaths []string) []string {
 		if !ok || len(tags) == 0 {
 			continue
 		}
-		return lowerSorted(tags)
+		return knownGeositeTagsFromSet(tags)
 	}
-	out := make([]string, len(defaultTags))
-	copy(out, defaultTags)
-	sort.Strings(out)
-	return out
+	return knownGeositeTagsFromSet(nil)
+}
+
+// KnownGeositeTagsSingle is a byte-slice convenience wrapper for
+// callers that already hold the .dat bytes (tests, or the API layer
+// preloading one file): same datalist post-processing and fallback as
+// KnownGeositeTags.
+func KnownGeositeTagsSingle(dat []byte) []string {
+	if len(dat) == 0 {
+		return knownGeositeTagsFromSet(nil)
+	}
+	tags, ok := ParseTags(dat)
+	if !ok || len(tags) == 0 {
+		return knownGeositeTagsFromSet(nil)
+	}
+	return knownGeositeTagsFromSet(tags)
+}
+
+// knownGeositeTagsFromSet applies the datalist post-processing
+// (lowercase, dedupe, sort); an empty or unusable tag set yields the
+// curated default list.
+func knownGeositeTagsFromSet(tags map[string]bool) []string {
+	if len(tags) == 0 {
+		out := make([]string, len(defaultTags))
+		copy(out, defaultTags)
+		sort.Strings(out)
+		return out
+	}
+	return lowerSorted(tags)
 }
 
 // lowerSorted converts the tag set to a sorted lowercase slice.
