@@ -40,5 +40,7 @@ func main() {
 	flag.Parse()
 
 	log.Printf("mock-remnawave listening on %s", *addr)
+	// #nosec G114 -- test-only mock bound to 127.0.0.1; no slowloris
+	// concern in CI fixtures.
 	log.Fatal(http.ListenAndServe(*addr, testfixtures.NewMux()))
 }

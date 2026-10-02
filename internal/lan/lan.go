@@ -80,6 +80,7 @@ func (r *Reader) Devices() ([]model.LANDevice, error) {
 	byMAC := map[string]model.LANDevice{}
 
 	// 1. dnsmasq lease file.
+	// #nosec G304 -- leasePath is the fixed /var/run/dnsmasq lease file or c.LeaseFile config, never user input
 	if f, err := os.Open(leasePath); err == nil {
 		defer f.Close()
 		now := r.now()
@@ -254,6 +255,7 @@ func SetStatic(dev model.LANDevice, devMode bool) error {
 		{"commit", "dhcp"},
 	}
 	for _, c := range cmds {
+		// #nosec G204 -- uciBin is a fixed constant (default "uci"); command vectors are built in this file from constants, not from user input
 		if out, err := exec.Command(uciBin, c...).CombinedOutput(); err != nil {
 			return fmt.Errorf("lan: uci %v: %w: %s", c, err, strings.TrimSpace(string(out)))
 		}
