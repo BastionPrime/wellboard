@@ -453,3 +453,38 @@ Phase 3 design decisions:
   container; `respawn_retry=0` (unlimited retries) is the convention
   copied from nikki but was not stress-tested against a crash-looping
   binary.
+
+## v1.0.4 decisions
+
+- **D23 — Router mode drives the installed nikki package.**
+  `nikki.RouterAdapter` replaces the DryRunAdapter that non-dev mode
+  used to return: it writes the generated profile under
+  `/etc/nikki/profiles`, selects it with `uci set nikki.config.profile`,
+  commits and restarts nikki, then health-checks the mihomo
+  external-controller. `Detect` seeds the rollback target from the
+  profile UCI already selects, so the FIRST WellBoard apply rolls back
+  to the owner's own working profile inside the existing 15 s budget
+  (`apply.HealthTimeout`). The dev stand keeps DryRunAdapter.
+- **D24 — Coexistence is a single UCI option.** WellBoard never writes
+  the mihomo mixin or `run/config.yaml`; the only mutation is
+  `nikki.config.profile`. Importing the owner's live rules is read-only
+  and creates DISABLED routes (`POST /api/v1/external-rules/import-all`,
+  idempotent), so the running config stays byte-identical (sha256
+  asserted in tests) until the owner presses Apply.
+- **D25 — Packages come from the real toolchains; this closes RK11.**
+  `.apk` is now produced by apk-tools 3 `apk mkpkg`, i.e. the v3 layout
+  that apk-tools 3 actually installs (the hand-made v2 tarball was
+  rejected with `v2 package format error`). `.ipk` is produced by the
+  OpenWrt `ipkg-build`: `$IPKG_BUILD`, then `ipkg-build` on PATH, else a
+  sha256-pinned copy of the official script. `scripts/package-*.sh` no
+  longer hand-roll the archive formats and the ipk script FAILS instead
+  of falling back to a hand-made `ar`. `VERSION` at the repo root is the
+  single source for the release version (`-X main.version`, package
+  versions).
+
+- **RK12.** Both package formats are verified structurally (`.apk`:
+  `apk adbdump`; `.ipk`: members and control file) but the v1.0.4
+  packages were not installed on the 25.12 rootfs yet: that install
+  check (and the owner-state acceptance run) is still owed.
+- **RK13.** The packages remain unsigned (`apk add --allow-untrusted`),
+  see RK9; no hosted feed yet.

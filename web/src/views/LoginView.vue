@@ -5,7 +5,7 @@ import { t } from '../i18n'
 import { APIError } from '../api'
 import { useAuthStore } from '../stores/auth'
 
-// Login screen (OPE-3402): the router's own root password, verified by
+// Login screen (): the router's own root password, verified by
 // the daemon through ubus — no second password to remember.
 const auth = useAuthStore()
 const router = useRouter()

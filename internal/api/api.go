@@ -51,11 +51,11 @@ type Server struct {
 	Store Store
 	// Catalog is the loaded template catalog (templates/ dir).
 	Catalog *templates.Catalog
-	// overlayDir is the user template overlay dir (OPE-3045 B1);
+	// overlayDir is the user template overlay dir (B1);
 	// template write/delete handlers 503 when it is unset.
 	overlayDir string
 	// geositeDatPaths is the probed .dat file list for the geosite
-	// tags endpoint (OPE-3045 B3); nil = the default probes.
+	// tags endpoint (B3); nil = the default probes.
 	geositeDatPaths []string
 	// lanReader lists DHCP devices (FR-4.4); wired via SetLAN.
 	lanReader LANReader
@@ -65,7 +65,7 @@ type Server struct {
 	// metacubexd/mihomo proxy); nil fields disable the endpoints.
 	monitor MonitorConfig
 	// nikkiPaths is the file list scanned by the nikki subscription
-	// import (OPE-3045 A3); nil = nikki.DefaultPathList().
+	// import (A3); nil = nikki.DefaultPathList().
 	nikkiPaths []string
 	// mu serializes load-modify-save cycles (single-writer; the store
 	// file is rewritten atomically but read-modify-write must not race).
@@ -81,13 +81,13 @@ func NewServer(st Store, catalog *templates.Catalog) *Server {
 	return &Server{Store: st, Catalog: catalog}
 }
 
-// SetOverlayDir wires the user template overlay directory (OPE-3045
+// SetOverlayDir wires the user template overlay directory (
 // B1): template create/edit/delete write files there. Passing an
 // empty string disables the write endpoints (503).
 func (s *Server) SetOverlayDir(dir string) { s.overlayDir = dir }
 
 // SetGeositeDatPaths overrides the .dat probe list of the geosite tags
-// endpoint (OPE-3045 B3; tests use fixture paths).
+// endpoint (B3; tests use fixture paths).
 func (s *Server) SetGeositeDatPaths(paths []string) { s.geositeDatPaths = paths }
 
 // ReloadCatalog re-runs templates.LoadMerged on the catalog's own dirs
@@ -147,6 +147,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// mihomo config + explicit per-rule import into WellBoard state.
 	mux.HandleFunc("GET /api/v1/external-rules", s.handleExternalRulesList)
 	mux.HandleFunc("POST /api/v1/external-rules/import", s.handleExternalRuleImport)
+	mux.HandleFunc("POST /api/v1/external-rules/import-all", s.handleExternalRulesImportAll)
 	mux.HandleFunc("GET /api/v1/templates", s.handleTemplatesList)
 	mux.HandleFunc("POST /api/v1/templates", s.handleTemplatesCreate)
 	mux.HandleFunc("GET /api/v1/templates/{id}", s.handleTemplatesGet)
@@ -349,7 +350,7 @@ func (s *Server) handleSourcesCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // ----------------------------------------------------------------------------
-// Sources: nikki import (OPE-3045 A3)
+// Sources: nikki import (A3)
 // ----------------------------------------------------------------------------
 
 // importNikkiIn is the import request body. An empty object works;
@@ -415,10 +416,12 @@ func (s *Server) handleSourcesImportNikki(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.log("nikki import: %d sources created (%d urls found)", imported, len(urls))
+	// The response carries MASKED rows only: a new API surface must not
+	// leak the subscription URL (secret rule).
 	writeJSON(w, http.StatusOK, map[string]any{
 		"imported": imported,
 		"found":    len(urls),
-		"sources":  st.Sources,
+		"sources":  sourcesSummary(st.Sources),
 	})
 }
 
@@ -1307,6 +1310,107 @@ func (s *Server) handleExternalRuleImport(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, rt)
 }
 
+// importAllOut is the bulk-import result: how many of the live nikki
+// rules became WellBoard routes, and why the rest did not.
+type importAllOut struct {
+	Imported int               `json:"imported"`
+	Skipped  int               `json:"skipped"`
+	Total    int               `json:"total"`
+	SkippedD []skippedRuleNote `json:"skipped_rules,omitempty"`
+}
+
+// skippedRuleNote names one rule that could not be imported verbatim.
+type skippedRuleNote struct {
+	Index  int    `json:"index"`
+	Rule   string `json:"raw"`
+	Reason string `json:"reason"`
+}
+
+// handleExternalRulesImportAll copies EVERY importable rule of the live
+// nikki config into WellBoard state as a DISABLED route (the owner
+// enables them individually and presses Apply — nothing is applied
+// automatically, and the running config is never touched).
+//
+// Read-only invariant (deliverable 2 of the ticket): this handler opens
+// RunConfigPath for reading only; no file under /etc/nikki is written
+// by any path in this package.
+func (s *Server) handleExternalRulesImportAll(w http.ResponseWriter, r *http.Request) {
+	rules, _, err := nikki.LoadExternalRules()
+	if err != nil {
+		writeError(w, httpErr(http.StatusServiceUnavailable, "external rules unavailable: %v", err))
+		return
+	}
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+
+	// Existing conditions, so a repeated import is a no-op instead of
+	// piling duplicates onto the route list.
+	seen := map[string]bool{}
+	for _, rt := range st.Routes {
+		for _, c := range rt.Conditions {
+			seen[string(c.Type)+"\x00"+c.Value] = true
+		}
+	}
+
+	out := importAllOut{Total: len(rules)}
+	for i := range rules {
+		ru := &rules[i]
+		condType, importable := importableRuleTypes[ru.Type]
+		if !importable || ru.Type == "MATCH" {
+			out.Skipped++
+			out.SkippedD = append(out.SkippedD, skippedRuleNote{ru.Index, ru.Raw,
+				fmt.Sprintf("rule type %s is shown read-only (not expressible as a route)", ru.Type)})
+			continue
+		}
+		cond, err := conditionFromRule(ru, condType)
+		if err != nil {
+			out.Skipped++
+			out.SkippedD = append(out.SkippedD, skippedRuleNote{ru.Index, ru.Raw, err.Error()})
+			continue
+		}
+		if seen[string(cond.Type)+"\x00"+cond.Value] {
+			out.Skipped++
+			out.SkippedD = append(out.SkippedD, skippedRuleNote{ru.Index, ru.Raw, "already imported"})
+			continue
+		}
+		target, _ := targetFromPolicy(ru.Target)
+		if target.Type == "" {
+			if t2, ok := serverOrGroupByName(st, ru.Target); ok {
+				target = t2
+			}
+		}
+		if target.Type == "" {
+			out.Skipped++
+			out.SkippedD = append(out.SkippedD, skippedRuleNote{ru.Index, ru.Raw,
+				fmt.Sprintf("policy %q is not a WellBoard group/server", ru.Target)})
+			continue
+		}
+		if err := validateTarget(st, target); err != nil {
+			out.Skipped++
+			out.SkippedD = append(out.SkippedD, skippedRuleNote{ru.Index, ru.Raw, err.Error()})
+			continue
+		}
+		st.Routes = append(st.Routes, model.Route{
+			ID: newID("rt", st), Name: defaultImportName(ru), Enabled: false,
+			Order: nextOrder(st), Conditions: []model.RouteCondition{cond},
+			Target: target, OnUnavailable: "block",
+		})
+		seen[string(cond.Type)+"\x00"+cond.Value] = true
+		out.Imported++
+	}
+	if err := s.save(st); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.log("external rules bulk import: %d routes created, %d skipped (%d rules read from %s)",
+		out.Imported, out.Skipped, out.Total, nikki.RunConfigPath)
+	writeJSON(w, http.StatusCreated, out)
+}
+
 // conditionFromRule builds the route condition, applying the same
 // value validation as the routes API (commas/colons/newlines and CIDR
 // checks; the imported value lands in generated rule lines,
@@ -1389,7 +1493,7 @@ func defaultImportName(ru *nikki.ExternalRule) string {
 // ----------------------------------------------------------------------------
 
 // templateOut is the API view of a catalog entry: the Template fields
-// plus the disabled flag (from settings, OPE-3045 B1).
+// plus the disabled flag (from settings, B1).
 type templateOut struct {
 	templates.Template
 	Disabled bool `json:"disabled"`
@@ -1456,7 +1560,7 @@ func (s *Server) handleTemplatesGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // templateIn is the create/update payload for a custom template
-// (OPE-3045 B1). Providers are optional and validated against the
+// (B1). Providers are optional and validated against the
 // shipped payload files.
 type templateIn struct {
 	ID            string                 `json:"id"`
@@ -1651,7 +1755,7 @@ func (s *Server) handleTemplatesDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// toggleIn is the disable/enable request body (OPE-3045 B1).
+// toggleIn is the disable/enable request body (B1).
 type toggleIn struct {
 	Disabled *bool `json:"disabled"`
 }
@@ -1723,7 +1827,7 @@ type applyIn struct {
 // handleTemplateApply creates a route from the template with the user's
 // target (FR-5.1/FR-5.2). The "all-vpn" template instead sets the
 // default policy (it has no conditions). Disabled templates refuse
-// with 409 (OPE-3045 B1: disabled = not offered; apply is explicit).
+// with 409 (B1: disabled = not offered; apply is explicit).
 func (s *Server) handleTemplateApply(w http.ResponseWriter, r *http.Request) {
 	if s.Catalog == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "template catalog unavailable"})
@@ -1784,7 +1888,7 @@ func (s *Server) handleTemplateApply(w http.ResponseWriter, r *http.Request) {
 }
 
 // ----------------------------------------------------------------------------
-// Geodata tags (OPE-3045 B3)
+// Geodata tags (B3)
 // ----------------------------------------------------------------------------
 
 // handleGeodataTags returns the known geosite category tags for the
@@ -1904,17 +2008,11 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.unlock()
-	// OPE-3045 A3: the Settings PAGE shows sources with a masked URL
+	// A3: the Settings PAGE shows sources with a masked URL
 	// (secret rule: the full URL is not printed on the settings
 	// screen). The shape of the settings object itself is unchanged —
 	// sources_summary is an additional field.
-	summary := []sourceSummary{}
-	for _, src := range st.Sources {
-		summary = append(summary, sourceSummary{
-			ID: src.ID, Name: src.Name, Kind: src.Kind,
-			MaskedURL: maskURL(src.URL), Enabled: src.Enabled,
-		})
-	}
+	summary := sourcesSummary(st.Sources)
 	writeJSON(w, http.StatusOK, settingsOut{
 		Settings:       st.Settings,
 		SourcesSummary: summary,
@@ -1945,6 +2043,20 @@ func maskURL(u string) string {
 		return u[:10] + "…(" + strconv.Itoa(len(u)) + ")"
 	}
 	return "****"
+}
+
+// sourcesSummary maps sources onto the masked rows used by every
+// non-/sources API surface (the raw URL stays in the existing /sources
+// route only, as it always has).
+func sourcesSummary(sources []model.Source) []sourceSummary {
+	out := make([]sourceSummary, 0, len(sources))
+	for _, src := range sources {
+		out = append(out, sourceSummary{
+			ID: src.ID, Name: src.Name, Kind: src.Kind,
+			MaskedURL: maskURL(src.URL), Enabled: src.Enabled,
+		})
+	}
+	return out
 }
 
 func (s *Server) handleSettingsPatch(w http.ResponseWriter, r *http.Request) {
@@ -2004,7 +2116,7 @@ func (s *Server) handleSettingsPatch(w http.ResponseWriter, r *http.Request) {
 		}
 		set.GeoipCustomURL = *in.GeoipCustomURL
 	}
-	// Full replace of the additions map (OPE-3045 B2). Custom-source
+	// Full replace of the additions map (B2). Custom-source
 	// URL presence is enforced at GENERATION time (the profile is
 	// where a custom source without a URL becomes an error) — here we
 	// validate what can be validated: source values and entry formats.
@@ -2246,7 +2358,7 @@ func isPortOrRange(v string) bool {
 }
 
 // validateGeodataAdditionEntry checks one additions value by kind
-// (OPE-3045 B2): "geosite" entries must look like domain suffixes,
+// (B2): "geosite" entries must look like domain suffixes,
 // "geoip" entries must be valid CIDRs (net.ParseCIDR — stricter than
 // isCIDR because the additions are always explicit CIDR lists).
 func validateGeodataAdditionEntry(kind, v string) error {

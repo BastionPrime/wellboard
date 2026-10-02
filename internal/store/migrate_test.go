@@ -46,7 +46,7 @@ func TestMigrateV1ToV2(t *testing.T) {
 	}
 }
 
-// TestMigrateV2ToV3 (OPE-3045 B2): the legacy single geodata value is
+// TestMigrateV2ToV3 (B2): the legacy single geodata value is
 // split into geosite_source + geoip_source; the old field disappears.
 func TestMigrateV2ToV3(t *testing.T) {
 	dir := t.TempDir()

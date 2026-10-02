@@ -7,7 +7,7 @@ import (
 )
 
 // defaultTags is the curated fallback category list served by
-// KnownGeositeTags when no local .dat file is found (OPE-3045 B3):
+// KnownGeositeTags when no local .dat file is found (B3):
 // ~30 popular v2fly/geosite categories, lowercase like the UI uses
 // them (the .dat tags are uppercase; the endpoint lowercases for the
 // datalist, mihomo matches case-insensitively).

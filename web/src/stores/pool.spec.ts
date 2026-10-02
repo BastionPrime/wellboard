@@ -297,10 +297,10 @@ describe('pool store route actions', () => {
 })
 
 // ----------------------------------------------------------------------------
-// Template CRUD + toggle (OPE-3045 B1)
+// Template CRUD + toggle (B1)
 // ----------------------------------------------------------------------------
 
-describe('pool store template actions (OPE-3045 B1)', () => {
+describe('pool store template actions (B1)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })

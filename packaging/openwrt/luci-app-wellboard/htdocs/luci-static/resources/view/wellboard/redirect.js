@@ -6,7 +6,7 @@
 // bounce the browser there. Port is read from the embedded env if
 // present (L.env.wellboardPort), else the default 8090.
 //
-// OPE-3045 A2: this must be a LuCI VIEW ('require view';
+// A2: this must be a LuCI VIEW ('require view';
 // view.extend), not a baseclass extension — menu action pages are
 // dispatched as views; baseclass.extend produced a broken dispatch
 // in recent LuCI masters.

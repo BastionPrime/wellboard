@@ -8,7 +8,9 @@ include $(TOPDIR)/rules.mk
 PREBUILT_DIR ?= $(CURDIR)/prebuilt
 
 PKG_NAME:=wellboard
-PKG_VERSION:=0.1.0
+# Keep in sync with the repo-root VERSION file (the release process
+# updates both). The binary reports the same value via -X main.version.
+PKG_VERSION:=1.0.4
 PKG_RELEASE:=1
 PKG_LICENSE:=AGPL-3.0-only
 PKG_MAINTAINER:=WellBoard project <dev@wellboard.local>

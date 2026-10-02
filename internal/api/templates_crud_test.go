@@ -15,7 +15,7 @@ import (
 )
 
 // newTemplatesTestServer is newTestServer plus the overlay dir wiring
-// (OPE-3045 B1). Returns the server (for store inspection), the test
+// (B1). Returns the server (for store inspection), the test
 // server and the overlay dir.
 func newTemplatesTestServer(t *testing.T) (*Server, *httptest.Server, string) {
 	t.Helper()

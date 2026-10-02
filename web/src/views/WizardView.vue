@@ -20,7 +20,7 @@ const step = ref(1)
 const error = ref('')
 const done = ref(false)
 
-// OPE-3045 B1: disabled templates are not offered in the wizard.
+// B1: disabled templates are not offered in the wizard.
 const offeredTemplates = computed(() => pool.templates.filter((tpl) => !tpl.disabled))
 
 const form = reactive({

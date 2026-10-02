@@ -22,7 +22,7 @@ func TestURLForKnown(t *testing.T) {
 }
 
 // TestURLForCustom: custom sources pass the URL through; missing or
-// non-http(s) URLs error (OPE-3045 B2: the error is surfaced by the
+// non-http(s) URLs error (B2: the error is surfaced by the
 // generator as a Problems entry, never silently defaulted).
 func TestURLForCustom(t *testing.T) {
 	u, err := URLFor(KindGeosite, "custom", "https://example.invalid/my-geosite.dat")
