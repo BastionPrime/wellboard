@@ -79,12 +79,12 @@ export interface Settings {
   default_policy: Target
   delay_test_interval_sec: number
   disabled_templates?: string[]
-  // OPE-3045 A3: masked sources list for the settings page (the full
+  // A3: masked sources list for the settings page (the full
   // URL is a secret and is not sent to this screen).
   sources_summary?: SourceSummary[]
 }
 
-// GeodataSource: the per-kind geodata source (OPE-3045 B2).
+// GeodataSource: the per-kind geodata source (B2).
 export type GeodataSource = 'runetfreedom' | 'metacubex' | 'custom'
 
 // SourceSummary is one masked sources row on the settings page
@@ -105,7 +105,7 @@ export interface Template {
   conditions: RouteCondition[]
   typical_target: string
   providers?: string[]
-  // OPE-3045 B1: origin ("builtin"|"custom") + override/disabled flags.
+  // B1: origin ("builtin"|"custom") + override/disabled flags.
   origin: 'builtin' | 'custom'
   overridden?: boolean
   disabled?: boolean
@@ -136,6 +136,15 @@ export interface ExternalRulesView {
   rules: ExternalRule[]
   importable_types?: Record<string, string>
   warning?: string
+}
+
+// ExternalImportAll is the bulk-import result: the running nikki rules
+// become DISABLED WellBoard routes.
+export interface ExternalImportAll {
+  imported: number
+  skipped: number
+  total: number
+  skipped_rules?: { index: number; raw: string; reason: string }[]
 }
 
 export interface Health {
@@ -197,7 +206,7 @@ export class APIError extends Error {
   }
 }
 
-// --- authentication (OPE-3402) -------------------------------------------
+// --- authentication () -------------------------------------------
 //
 // The CSRF token lives in memory only: it is issued by the login /
 // session endpoints and repeated in the X-CSRF-Token header on every
@@ -264,7 +273,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
-// importNikkiSources (OPE-3045 A3): discover subscription URLs in the
+// importNikkiSources (A3): discover subscription URLs in the
 // nikki mihomo config (read-only scan) and create sources for the new
 // ones. Returns the number imported and found.
 export async function importNikkiSources(name?: string): Promise<{
@@ -279,7 +288,7 @@ export async function importNikkiSources(name?: string): Promise<{
 }
 
 // ----------------------------------------------------------------------------
-// OPE-3045 B1: custom templates CRUD + toggle; B3: geosite tags
+// B1: custom templates CRUD + toggle; B3: geosite tags
 // ----------------------------------------------------------------------------
 
 // TemplateInput is the template editor payload (create/edit).

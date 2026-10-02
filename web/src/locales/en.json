@@ -283,6 +283,8 @@
   "routes.extValue": "Value",
   "routes.extTarget": "Policy",
   "routes.extImport": "Import to WellBoard",
+  "routes.extImportAll": "Import all rules",
+  "routes.extImportedAll": "OK: {n} routes imported, {s} skipped (all created disabled; enable the ones you want and press Apply)",
   "routes.extImported": "OK: rule copied as route {id} (disabled; enable and Apply at will)",
   "routes.extImportFailed": "Import failed: {msg}",
   "routes.extEmpty": "No external rules found (config file missing or has no rules section).",

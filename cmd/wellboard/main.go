@@ -177,7 +177,7 @@ func main() {
 
 	// Template catalog (FR-5): fatal in prod (the package is broken),
 	// warning-only in dev (the dir may be absent in a bare checkout).
-	// OPE-3045 B1: the user overlay (<state_dir>/templates; /etc/
+	// B1: the user overlay (<state_dir>/templates; /etc/
 	// wellboard/templates in prod) is merged on top — custom templates
 	// and builtin overrides survive sysupgrade via keep.d (it covers
 	// all of /etc/wellboard).
@@ -332,9 +332,13 @@ func main() {
 // elsewhere. Dev stand: local mihomo binary + transport from env.
 func newAdapter(dev bool, stateDir, mihomoBin string, logf func(string, ...any)) nikki.Adapter {
 	if !dev {
-		// Router mode lands with phase 6 packaging; until then the
-		// daemon would not run on a router anyway.
-		return nikki.NewDryRunAdapter("/etc/nikki/profiles", "/usr/bin/mihomo")
+		// Router mode: drive the nikki package that is already
+		// installed and running (write a profile, select it in UCI,
+		// restart, health-check). Coexistence: nothing but
+		// nikki.config.profile is changed.
+		a := nikki.NewRouterAdapter()
+		a.Log = logf
+		return a
 	}
 	d := nikki.NewDryRunAdapter(filepath.Join(stateDir, "nikki-profiles"), mihomoBin)
 	d.Log = logf

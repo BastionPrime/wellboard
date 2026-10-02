@@ -8,6 +8,7 @@ import {
   type TemplateInput,
   type LANDevice,
   type ExternalRulesView,
+  type ExternalImportAll,
 } from '../api'
 
 // Pool store: servers, groups, routes, templates, LAN devices — the
@@ -76,13 +77,13 @@ export const usePoolStore = defineStore('pool', {
       }
     },
     // loadTemplates re-reads the merged catalog (after template CRUD,
-    // OPE-3045 B1).
+    // B1).
     async loadTemplates() {
       const tp = await api<{ templates: Template[]; warnings?: string[] }>('/templates')
       this.templates = tp.templates ?? []
       this.templateWarnings = tp.warnings ?? []
     },
-    // Template CRUD (OPE-3045 B1): custom templates + builtin
+    // Template CRUD (B1): custom templates + builtin
     // overrides live in the overlay dir; the server reloads the
     // merged catalog on every write.
     async saveTemplate(input: TemplateInput, id?: string): Promise<Template> {
@@ -140,6 +141,17 @@ export const usePoolStore = defineStore('pool', {
         body: JSON.stringify({ rule, target: target ?? { type: '' }, name: name ?? '' }),
       })
       this.routes.push(out)
+      return out
+    },
+    // import EVERY importable rule of the live nikki config as a
+    // disabled route in one go. Read-only: the running config is
+    // untouched until the owner presses Apply.
+    async importExternalRulesAll(): Promise<ExternalImportAll> {
+      const out = await api<ExternalImportAll>('/external-rules/import-all', {
+        method: 'POST',
+        body: '{}',
+      })
+      await this.loadAll()
       return out
     },
     // pinStatic requests a static lease for a LAN device (FR-4.4). The
