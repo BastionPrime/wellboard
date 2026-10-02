@@ -428,3 +428,40 @@ Phase 3 design decisions:
   container; `respawn_retry=0` (unlimited retries) is the convention
   copied from nikki but was not stress-tested against a crash-looping
   binary.
+
+## v1.0.4 decisions
+
+- **D23 — Router mode drives the installed nikki package.**
+  `nikki.RouterAdapter` replaces the DryRunAdapter that non-dev mode
+  used to return: it writes the generated profile under
+  `/etc/nikki/profiles`, selects it with `uci set nikki.config.profile`,
+  commits and restarts nikki, then health-checks the mihomo
+  external-controller. `Detect` seeds the rollback target from the
+  profile UCI already selected, so the FIRST WellBoard apply rolls back
+  to the owner's own working profile inside the existing 15 s budget
+  (`apply.HealthTimeout`). The dev stand keeps DryRunAdapter.
+- **D24 — Coexistence is a single UCI option.** WellBoard never writes
+  the mihomo mixin or `run/config.yaml`; the only mutation is
+  `nikki.config.profile`. Importing the owner's live rules is read-only
+  and creates DISABLED routes (`POST /external-rules/import-all`,
+  idempotent), so the running config stays byte-identical (sha256
+  asserted in tests) until the owner presses Apply.
+- **D25 — Packages come from the real toolchains.** `.apk` is produced
+  by apk-tools 3 `apk mkpkg` (v3 container + metadata), `.ipk` by the
+  OpenWrt buildroot's `ipkg-build`; `scripts/package-*.sh` no longer
+  hand-roll the archive formats, and the ipk script now FAILS instead
+  of falling back to a hand-made `ar`. `VERSION` at the repo root is
+  the single source for the release version (binary `-X main.version`,
+  package versions).
+
+- **RK11.** The v1.0.4 packages are still unsigned: `.apk` needs
+  `apk add --allow-untrusted` (see RK9). Signing keys and a hosted feed
+  remain open.
+- **RK12.** Both package formats are verified structurally (apk
+  `adbdump`, ipk tar members/control) but not installed on a router:
+  the acceptance run on OpenWrt 25.12 with a copy of the owner's state
+  is still owed.
+- **RK13.** The wizard/LuCI fix, custom templates and geodata sources
+  in this release come from the wizard/luci branch whose review asked
+  for the masked import response fixed here; that branch's second chunk
+  was not re-reviewed in this one.
