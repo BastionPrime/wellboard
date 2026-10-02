@@ -6,7 +6,8 @@ include $(TOPDIR)/rules.mk
 # no views, no rpcd ACLs beyond the menu itself.
 
 PKG_NAME:=luci-app-wellboard
-PKG_VERSION:=0.1.0
+# Keep in sync with the repo-root VERSION file (see packaging/openwrt/Makefile).
+PKG_VERSION:=1.0.4
 PKG_RELEASE:=1
 LUCI_TITLE:=LuCI support for WellBoard
 LUCI_DEPENDS:=+wellboard +luci-base

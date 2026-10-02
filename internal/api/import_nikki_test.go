@@ -7,11 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/wellboard/wellboard/internal/model"
 )
 
-// OPE-3045 A3 tests. Secret rule: fixtures use FAKE URLs
+// A3 tests. Secret rule: fixtures use FAKE URLs
 // (https://example.invalid/…) only; assertions never echo a full URL
 // into the test output.
 
@@ -60,9 +58,14 @@ func TestImportNikkiCreatesSources(t *testing.T) {
 		t.Fatalf("import-nikki: %d %s", code, body)
 	}
 	var out struct {
-		Imported int            `json:"imported"`
-		Found    int            `json:"found"`
-		Sources  []model.Source `json:"sources"`
+		Imported int `json:"imported"`
+		Found    int `json:"found"`
+		Sources  []struct {
+			ID        string `json:"id"`
+			Kind      string `json:"kind"`
+			MaskedURL string `json:"masked_url"`
+			Enabled   bool   `json:"enabled"`
+		} `json:"sources"`
 	}
 	if err := json.Unmarshal([]byte(body), &out); err != nil {
 		t.Fatal(err)
@@ -80,6 +83,14 @@ func TestImportNikkiCreatesSources(t *testing.T) {
 		if !src.Enabled {
 			t.Fatalf("imported source must be enabled: %+v", src)
 		}
+		if src.MaskedURL == "" || !strings.Contains(src.MaskedURL, "…(") {
+			t.Fatalf("import response must carry a masked URL row, got %q", src.MaskedURL)
+		}
+	}
+	// The response of this NEW endpoint must not leak the subscription
+	// URL (review blocker on A3).
+	if strings.Contains(body, "example.invalid") && strings.Contains(body, "/nikki/") {
+		t.Fatal("import-nikki response leaked a full subscription URL")
 	}
 	// Idempotent: re-import must add nothing.
 	code, body = do(t, ts, "POST", "/api/v1/sources/import-nikki", `{}`)

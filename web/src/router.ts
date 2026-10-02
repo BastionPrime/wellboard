@@ -25,7 +25,7 @@ export const router = createRouter({
 // Guard order: (1) login — when the deployment requires it, every
 // screen except /login waits for a verified session; (2) bootstrap —
 // read settings (locale), sources and the pool before any view mounts.
-// OPE-3045: the first-run auto-redirect to /wizard is REMOVED — the
+// the first-run auto-redirect to /wizard is REMOVED — the
 // wizard is reachable only by explicit navigation (the button in
 // SettingsView); an empty state is handled by the per-screen hints.
 let bootstrapped = false

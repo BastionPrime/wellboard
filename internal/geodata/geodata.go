@@ -34,7 +34,7 @@ const (
 	Runetfreedom SourceKind = "runetfreedom"
 	// MetaCubeX is the alternative source.
 	MetaCubeX SourceKind = "metacubex"
-	// Custom uses a user-supplied URL per file kind (OPE-3045 B2):
+	// Custom uses a user-supplied URL per file kind (B2):
 	// the settings carry the actual URLs.
 	Custom SourceKind = "custom"
 )
@@ -63,7 +63,7 @@ func Valid(s string) bool {
 }
 
 // GeositeValid reports whether s is a valid geosite source
-// ("runetfreedom"|"metacubex"|"custom", OPE-3045 B2).
+// ("runetfreedom"|"metacubex"|"custom", B2).
 func GeositeValid(s string) bool {
 	switch SourceKind(s) {
 	case Runetfreedom, MetaCubeX, Custom:
@@ -78,7 +78,7 @@ func GeoipValid(s string) bool {
 }
 
 // URL returns the download URL for kind ("geosite"/"geoip").
-// Deprecated for custom sources: use URLFor (OPE-3045 B2), which
+// Deprecated for custom sources: use URLFor (B2), which
 // resolves the custom URL. URL keeps serving the two known kinds.
 func URL(s SourceKind, kind string) (string, error) {
 	m, ok := downloadURL[s]
@@ -93,7 +93,7 @@ func URL(s SourceKind, kind string) (string, error) {
 }
 
 // URLFor resolves the download URL for one file kind and source
-// (OPE-3045 B2): known sources map to their stable URLs, "custom"
+// (B2): known sources map to their stable URLs, "custom"
 // requires a non-empty http(s) customURL. Invalid kind/source/URL
 // combinations return an error naming the problem.
 func URLFor(kind, source, customURL string) (string, error) {
@@ -160,7 +160,7 @@ func (c *Checker) Check(ctx context.Context, s SourceKind) Availability {
 	return res
 }
 
-// CheckKind probes ONE file kind (OPE-3045 B2 split): the geosite and
+// CheckKind probes ONE file kind (B2 split): the geosite and
 // geoip sources are configured separately, each with its own custom
 // URL. The Availability carries the kind's URL in KindURL (empty for
 // known sources) and the ok flag in GeositeOK/GeoipOK matching the kind.

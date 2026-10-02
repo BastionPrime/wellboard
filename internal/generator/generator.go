@@ -113,7 +113,7 @@ type profile struct {
 	RuleProviders *map[string]any  `yaml:"rule-providers,omitempty"`
 	Rules         []string         `yaml:"rules"`
 	// GeoXURL pins the geodata download URLs mihomo uses for
-	// GEOSITE/GEOIP rules (OPE-3045 B2). ALWAYS emitted (the known
+	// GEOSITE/GEOIP rules (B2). ALWAYS emitted (the known
 	// defaults are stable) so the profile is explicit about where the
 	// .dat files come from; a custom source with an empty URL is a
 	// Problems entry, never a silent default.
@@ -328,7 +328,7 @@ func build(st *model.State) (*profile, error) {
 	needGeosite := false
 	usedProviders := map[string]bool{}
 
-	// Geodata additions (OPE-3045 B2): entries are validated once here;
+	// Geodata additions (B2): entries are validated once here;
 	// the emit loop then appends them after the matching GEOSITE/GEOIP
 	// rule. Categories not referenced by any route never surface here
 	// (the emit loop only looks up keys for categories it actually
@@ -387,7 +387,7 @@ func build(st *model.State) (*profile, error) {
 				needGeosite = true
 			}
 			rules = append(rules, line+","+svcName)
-			// Geodata additions (OPE-3045 B2): each entry becomes an
+			// Geodata additions (B2): each entry becomes an
 			// extra rule aimed at the SAME route group, right after
 			// the GEOSITE/GEOIP rule for that category.
 			var addKey string
@@ -447,7 +447,7 @@ func build(st *model.State) (*profile, error) {
 		return nil, prob
 	}
 
-	// geox-url (OPE-3045 B2): always emit the resolved download URLs.
+	// geox-url (B2): always emit the resolved download URLs.
 	// A custom source with a missing/invalid URL is a config error —
 	// surfaced as Problems, never silently defaulted.
 	geox := map[string]string{}
@@ -496,7 +496,7 @@ func ProviderPath(name string) string {
 }
 
 // validateAdditionEntry checks one geodata-additions value against its
-// key kind (OPE-3045 B2): "geosite:<category>" entries must be
+// key kind (B2): "geosite:<category>" entries must be
 // domain-suffix-shaped (no ',', ':', newlines, no spaces/slashes, must
 // not start with '.'), "geoip:<category>" entries must be valid CIDRs
 // (net.ParseCIDR). The rule-line safety rules from the security audit

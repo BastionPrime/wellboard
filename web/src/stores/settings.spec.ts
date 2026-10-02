@@ -89,7 +89,7 @@ describe('settings store', () => {
     vi.unstubAllGlobals()
   })
 
-  it('load() carries the OPE-3045 B2 geodata fields through', async () => {
+  it('load() carries the B2 geodata fields through', async () => {
     vi.stubGlobal(
       'fetch',
       mockFetchOnce(200, {

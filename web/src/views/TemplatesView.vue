@@ -6,10 +6,10 @@ import { geositeTags, type Target, type Template } from '../api'
 
 // Templates (FR-5): catalog + apply with target selection.
 // The "all-vpn" template sets the default policy (api.go special-case).
-// OPE-3045 B1: custom templates overlay — create/edit (overlay file),
+// B1: custom templates overlay — create/edit (overlay file),
 // disable/enable (settings.disabled_templates), delete (overlay file
 // only; deleting an override restores the builtin entry).
-// OPE-3045 B3: geosite condition rows get a datalist with known
+// B3: geosite condition rows get a datalist with known
 // category tags from GET /api/v1/geodata/tags.
 const pool = usePoolStore()
 const selected = ref<Record<string, string>>({})

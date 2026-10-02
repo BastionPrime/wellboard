@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { api, setCSRFToken } from '../api'
 
-// Auth store (OPE-3402): the router's own root password, verified by
+// Auth store (): the router's own root password, verified by
 // the daemon through ubus. `required` mirrors the deployment setting
 // (UCI wellboard.main.auth / --no-auth): a stand without a login never
 // shows the login screen, so the board stays usable in dev.

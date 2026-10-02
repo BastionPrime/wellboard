@@ -667,7 +667,7 @@ func TestSettingsBranches(t *testing.T) {
 	if code != 400 || !strings.Contains(body, "lang") {
 		t.Fatalf("bad lang: %d %s", code, body)
 	}
-	// Bad geodata (OPE-3045 B2: split fields).
+	// Bad geodata (B2: split fields).
 	code, body = do(t, ts, "PATCH", "/api/v1/settings", `{"geosite_source":"bogus"}`)
 	if code != 400 || !strings.Contains(body, "geosite_source") {
 		t.Fatalf("bad geosite_source: %d %s", code, body)

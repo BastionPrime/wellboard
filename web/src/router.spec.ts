@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Router } from 'vue-router'
 
-// OPE-3045 A1: the router guard no longer auto-redirects to /wizard
+// A1: the router guard no longer auto-redirects to /wizard
 // when the state has no sources — the wizard is reachable only via the
 // explicit SettingsView button. The stores are module-mocked so the
 // guard's bootstrap imports resolve to fakes (sources EMPTY: the old
@@ -37,7 +37,7 @@ vi.mock('./stores/settings', () => ({
 }))
 vi.mock('./stores/sources', () => ({
   useSourcesStore: () => ({
-    sources: [], // EMPTY — the pre-OPE-3045 guard redirected to /wizard
+    sources: [], // EMPTY — the pre- guard redirected to /wizard
     load: () => Promise.resolve(),
   }),
 }))
@@ -50,7 +50,7 @@ vi.mock('./i18n', () => ({
   setLocale: () => {},
 }))
 
-// OPE-3402: the guard now asks the auth store first. Required+verified
+// the guard now asks the auth store first. Required+verified
 // is the deployment default assumption here; the login cases below flip
 // the stub to required+unauthenticated.
 const authStub = {
@@ -68,7 +68,7 @@ async function freshRouter(): Promise<Router> {
   return mod.router
 }
 
-describe('router first-run behavior (OPE-3045 A1)', () => {
+describe('router first-run behavior (A1)', () => {
   beforeEach(() => {
     vi.resetModules()
     authStub.required = false
@@ -97,7 +97,7 @@ describe('router first-run behavior (OPE-3045 A1)', () => {
   })
 })
 
-describe('router login gate (OPE-3402)', () => {
+describe('router login gate ()', () => {
   beforeEach(() => {
     vi.resetModules()
   })

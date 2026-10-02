@@ -7,7 +7,7 @@
 // "all-vpn" template is special: it has no conditions and applying it
 // sets the default policy instead of creating a route.
 //
-// OPE-3045 B1: the catalog is a merge of two directories — the
+// B1: the catalog is a merge of two directories — the
 // read-only shipped dir (/usr/share/wellboard/templates) and the user
 // overlay (/etc/wellboard/templates on the router, <state_dir>/templates
 // in dev; survives sysupgrade via the existing keep.d which covers

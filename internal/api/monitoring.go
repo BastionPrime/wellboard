@@ -212,7 +212,7 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. geodata available (HEAD probe of the configured sources,
-	// OPE-3045 B2 split: geosite and geoip are configured separately
+	// B2 split: geosite and geoip are configured separately
 	// and each gets its own check line).
 	st, err := s.load()
 	if err != nil {

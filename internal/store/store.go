@@ -24,7 +24,7 @@ import (
 // HWIDStatus, Announce — present in the TZ 5.3 example since Phase 1, but
 // only written starting Phase 2).
 //
-// v3 (OPE-3045 B) splits the geodata source into GeositeSource /
+// v3 ( B) splits the geodata source into GeositeSource /
 // GeoipSource (+ custom URLs, additions) and adds
 // Settings.DisabledTemplates. No data moves besides the geodata split;
 // older files load through migrate.
@@ -109,7 +109,7 @@ func (s *Store) Load() (*model.State, error) {
 // missed update, so the counter starts at 1 — giving it the full 2-update
 // grace window would overstate its freshness.
 //
-// v2 → v3 (OPE-3045 B2): the single Settings.Geodata field is replaced by
+// v2 → v3 (B2): the single Settings.Geodata field is replaced by
 // GeositeSource + GeoipSource. The Go field is gone from the struct, so
 // the legacy value is read through a raw-JSON side struct here before the
 // split fields take over. An empty legacy value falls back to the
