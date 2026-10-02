@@ -226,6 +226,11 @@ func (c *Checker) probe(ctx context.Context, client *http.Client, s SourceKind, 
 // tag (the tag list is exact, not fuzzy).
 var ErrBadTag = errors.New("geodata: tag not present in the .dat file")
 
+// ErrInvalidTag is returned for requested category tags that are
+// malformed (empty, whitespace, control or non-ASCII characters):
+// config errors are surfaced, never silently coerced (A2).
+var ErrInvalidTag = errors.New("geodata: invalid category tag")
+
 // TagPresent reports whether tag (UPPERCASE v2fly name) exists in the
 // parsed .dat bytes. Tags are matched exactly.
 func TagPresent(dat []byte, tag string) bool {
@@ -236,6 +241,10 @@ func TagPresent(dat []byte, tag string) bool {
 
 // CheckCategories verifies that every category in want exists in the
 // geosite .dat. Returns the missing ones (empty = all present).
+// The legacy lenient behaviour: want entries are matched verbatim,
+// malformed entries simply count as missing. New callers should
+// prefer CheckCategoriesStrict, which rejects malformed tags with an
+// error instead of reporting them as missing.
 func CheckCategories(dat []byte, want []string) []string {
 	tags, _ := ParseTags(dat)
 	var missing []string
@@ -245,6 +254,23 @@ func CheckCategories(dat []byte, want []string) []string {
 		}
 	}
 	return missing
+}
+
+// CheckCategoriesStrict verifies that every category in want exists
+// in the geosite .dat (A2): malformed tags — empty, containing
+// whitespace (leading, trailing, or inner), control characters, or
+// non-ASCII bytes — are rejected with an error wrapping
+// ErrInvalidTag and naming the offending tag, instead of being
+// silently reported as missing. Valid tags that are simply absent
+// from the .dat are still reported as missing (they may appear in a
+// newer .dat; that is a data condition, not a config error).
+func CheckCategoriesStrict(dat []byte, want []string) ([]string, error) {
+	for _, w := range want {
+		if !validTag(w) {
+			return nil, fmt.Errorf("%w: %q", ErrInvalidTag, w)
+		}
+	}
+	return CheckCategories(dat, want), nil
 }
 
 // ParseTags scans a v2fly geosite.dat protobuf stream and returns all
