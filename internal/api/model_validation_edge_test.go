@@ -156,9 +156,11 @@ func TestGroupValidationEdges(t *testing.T) {
 	}
 	// AUDIT FINDING (documented in the report): handleGroupPatch never
 	// calls validateGroupIn — it writes name/type/members directly, so a
-	// group CAN be patched to contain itself, have a reserved name
-	// prefix ("rt:") or unknown members. Pin the current behavior so the
-	// hole is visible; fixing it is a behavior change for the owner.
+	// group CAN be patched to contain itself, to an unknown type, to
+	// empty members, or to reference unknown member ids. (The reserved
+	// "rt:" name prefix IS separately rejected in handleGroupPatch.)
+	// Pin the current behavior so the hole is visible; fixing it is a
+	// behavior change for the owner.
 	code, body := do(t, ts, "PATCH", "/api/v1/groups/grp_1",
 		`{"name":"G","type":"select","members":["grp_1"]}`)
 	if code != http.StatusOK {
@@ -284,23 +286,21 @@ func TestOversizedBodiesRejected(t *testing.T) {
 	// 1 MiB pad → over the cap once wrapped in JSON syntax.
 	pad := strings.Repeat("a", 1<<20)
 	for _, tc := range []struct {
-		path string
-		body string
+		method string
+		path   string
+		body   string
 	}{
-		{"/api/v1/sources", `{"name":"` + pad + `"}`},
-		{"/api/v1/groups", `{"name":"` + pad + `"}`},
-		{"/api/v1/routes", `{"name":"` + pad + `"}`},
+		{"POST", "/api/v1/sources", `{"name":"` + pad + `"}`},
+		{"PATCH", "/api/v1/settings", `{"lang":"` + pad + `"}`},
+		{"POST", "/api/v1/groups", `{"name":"` + pad + `"}`},
+		{"POST", "/api/v1/routes", `{"name":"` + pad + `"}`},
 	} {
-		method := "POST"
-		if tc.path == "/api/v1/settings" {
-			method = "PATCH"
-		}
-		code, body := do(t, ts, method, tc.path, tc.body)
+		code, body := do(t, ts, tc.method, tc.path, tc.body)
 		if code != http.StatusBadRequest {
-			t.Fatalf("%s %s oversized: status %d, body %.80s", method, tc.path, code, body)
+			t.Fatalf("%s %s oversized: status %d, body %.80s", tc.method, tc.path, code, body)
 		}
 		if !strings.Contains(body, "invalid JSON body") {
-			t.Fatalf("%s %s oversized: body %.120s lacks size/decode error", method, tc.path, body)
+			t.Fatalf("%s %s oversized: body %.120s lacks size/decode error", tc.method, tc.path, body)
 		}
 	}
 
