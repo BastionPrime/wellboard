@@ -32,6 +32,7 @@ const formError = ref('')
 const extOpen = ref(false)
 const extMsg = ref('')
 const extImporting = ref<string | null>(null)
+const extImportingAll = ref(false)
 
 const ext = computed(() => pool.externalRules)
 
@@ -55,6 +56,23 @@ async function importRule(raw: string) {
     extMsg.value = t('routes.extImportFailed', { msg: e instanceof Error ? e.message : String(e) })
   } finally {
     extImporting.value = null
+  }
+}
+
+// OPE-3401: import the whole live rule set in one go — every rule
+// becomes a DISABLED WellBoard route; nothing is applied and the
+// running nikki config is not touched.
+async function importAllRules() {
+  extMsg.value = ''
+  extImportingAll.value = true
+  try {
+    const out = await pool.importExternalRulesAll()
+    extMsg.value = t('routes.extImportedAll', { n: out.imported, s: out.skipped })
+    await pool.loadExternalRules()
+  } catch (e) {
+    extMsg.value = t('routes.extImportFailed', { msg: e instanceof Error ? e.message : String(e) })
+  } finally {
+    extImportingAll.value = false
   }
 }
 
@@ -269,6 +287,16 @@ onMounted(() => {
       <template v-else-if="ext">
         <p class="muted ext-meta">
           {{ t('routes.extMeta', { count: ext.count, source: ext.source }) }}
+        </p>
+        <p v-if="ext.count > 0" class="ext-actions">
+          <button
+            type="button"
+            class="small secondary"
+            :disabled="extImportingAll"
+            @click="importAllRules"
+          >
+            {{ extImportingAll ? t('common.loading') : t('routes.extImportAll') }}
+          </button>
         </p>
         <p v-if="extMsg" :class="extMsg.startsWith('OK') ? 'ok' : 'error'">{{ extMsg }}</p>
         <table class="ext-table">

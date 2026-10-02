@@ -138,6 +138,15 @@ export interface ExternalRulesView {
   warning?: string
 }
 
+// ExternalImportAll is the bulk-import result (OPE-3401: the running
+// nikki rules become DISABLED WellBoard routes).
+export interface ExternalImportAll {
+  imported: number
+  skipped: number
+  total: number
+  skipped_rules?: { index: number; raw: string; reason: string }[]
+}
+
 export interface Health {
   status: string
   app: string
