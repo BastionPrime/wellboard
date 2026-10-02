@@ -57,8 +57,12 @@ func newTestRouter(t *testing.T) (*RouterAdapter, *fakeRunner, string, string) {
 		MihomoBin:   "/usr/bin/mihomo",
 		UCIBin:      "uci",
 		InitScript:  "/etc/init.d/nikki",
-		HealthPoll:  time.Millisecond,
-		Run:         fr.run,
+		// Keep the version probes hermetic: they must not read the
+		// test host's package databases.
+		OpkgControlPath: filepath.Join(root, "opkg-nikki.control"),
+		ApkDBPath:       filepath.Join(root, "apk-installed"),
+		HealthPoll:      time.Millisecond,
+		Run:             fr.run,
 	}
 	return a, fr, profiles, runDir
 }
@@ -306,4 +310,47 @@ func TestRouterCoexistenceRunConfigUntouched(t *testing.T) {
 func sha256Sum(b []byte) []byte {
 	s := sha256.Sum256(b)
 	return s[:]
+}
+
+// TestVersionFromApkDB covers the 25.12 package database (apk-tools 3),
+// which is what Detect must read there: opkg does not exist.
+func TestVersionFromApkDB(t *testing.T) {
+	db := "P:busybox\nV:1.36.1-r2\n\nP:nikki\nV:1.11.2-r1\n\nP:curl\nV:8.9.1\n"
+	if got := versionFromApkDB(db, "nikki"); got != "1.11.2-r1" {
+		t.Fatalf("nikki version = %q, want 1.11.2-r1", got)
+	}
+	if got := versionFromApkDB(db, "mihomo"); got != "" {
+		t.Fatalf("absent package must give an empty version, got %q", got)
+	}
+	// A name that is a prefix of another package must not match.
+	db2 := "P:nikki-ui\nV:9.9.9\n\nP:nikki\nV:1.2.3\n"
+	if got := versionFromApkDB(db2, "nikki"); got != "1.2.3" {
+		t.Fatalf("prefix name matched: %q, want 1.2.3", got)
+	}
+}
+
+// TestRouterDetectReadsNikkiVersionFromApk is the 25.12 path end to
+// end: no opkg binary, an apk database with the nikki record.
+func TestRouterDetectReadsNikkiVersionFromApk(t *testing.T) {
+	a, fr, _, _ := newTestRouter(t)
+	a.OpkgControlPath = filepath.Join(t.TempDir(), "absent.control")
+	apkDB := filepath.Join(t.TempDir(), "installed")
+	if err := os.WriteFile(apkDB, []byte("P:busybox\nV:1.36.1-r2\n\nP:nikki\nV:1.11.2-r1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.ApkDBPath = apkDB
+	fr.handler = func(name string, args []string) ([]byte, error) {
+		// 25.12 has no opkg at all.
+		if name == "opkg" {
+			return nil, fmt.Errorf("exec: \"opkg\": executable file not found in $PATH")
+		}
+		return nil, nil
+	}
+	info, err := a.Detect()
+	if err != nil {
+		t.Fatalf("Detect: %v", err)
+	}
+	if info.NikkiVersion != "1.11.2-r1" {
+		t.Fatalf("nikki version = %q, want 1.11.2-r1 (from the apk database)", info.NikkiVersion)
+	}
 }

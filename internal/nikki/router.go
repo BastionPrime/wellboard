@@ -57,6 +57,11 @@ type RouterAdapter struct {
 	Run CommandRunner
 	// HealthPoll is the delay between API probes in Health.
 	HealthPoll time.Duration
+	// OpkgControlPath is the opkg control file probed for the nikki
+	// version on 23.05/24.10; ApkDBPath is the apk-tools database probed
+	// on 25.12+. Fields (not constants) so tests can use fixtures.
+	OpkgControlPath string
+	ApkDBPath       string
 
 	mu          sync.Mutex
 	lastGood    string
@@ -73,17 +78,23 @@ const (
 	DefaultMihomoBin   = "/usr/bin/mihomo"
 	DefaultUCIBin      = "uci"
 	DefaultInitScript  = "/etc/init.d/nikki"
+	// DefaultOpkgControl is the opkg database entry (23.05/24.10) and
+	// DefaultApkDB the apk-tools database (25.12+).
+	DefaultOpkgControl = "/usr/lib/opkg/info/nikki.control"
+	DefaultApkDB       = "/lib/apk/db/installed"
 )
 
 // NewRouterAdapter returns an adapter with production defaults.
 func NewRouterAdapter() *RouterAdapter {
 	return &RouterAdapter{
-		ProfilesDir: DefaultProfilesDir,
-		RunDir:      DefaultRunDir,
-		MihomoBin:   DefaultMihomoBin,
-		UCIBin:      DefaultUCIBin,
-		InitScript:  DefaultInitScript,
-		HealthPoll:  300 * time.Millisecond,
+		ProfilesDir:     DefaultProfilesDir,
+		RunDir:          DefaultRunDir,
+		MihomoBin:       DefaultMihomoBin,
+		UCIBin:          DefaultUCIBin,
+		InitScript:      DefaultInitScript,
+		OpkgControlPath: DefaultOpkgControl,
+		ApkDBPath:       DefaultApkDB,
+		HealthPoll:      300 * time.Millisecond,
 	}
 }
 
@@ -162,9 +173,10 @@ func (d *RouterAdapter) Detect() (Info, error) {
 	return info, nil
 }
 
-// nikkiVersion reads the installed nikki package version: the opkg
-// database on 23.05/24.10, the apk database on 25.12+, "" when neither
-// is readable (the UI shows "unknown" rather than failing Detect).
+// nikkiVersion reads the installed nikki package version: opkg's
+// database on 23.05/24.10, the apk-tools database on 25.12+ (OpenWrt
+// switched package managers there), "" when neither is readable — the
+// UI shows "unknown" rather than failing Detect.
 func (d *RouterAdapter) nikkiVersion(ctx context.Context) string {
 	if out, err := d.run(ctx, "opkg", "list-installed", "nikki"); err == nil {
 		// "nikki - 1.2.3" style line
@@ -176,10 +188,49 @@ func (d *RouterAdapter) nikkiVersion(ctx context.Context) string {
 			return fields[len(fields)-1]
 		}
 	}
-	if data, err := os.ReadFile("/usr/lib/opkg/info/nikki.control"); err == nil {
+	if data, err := os.ReadFile(d.opkgControlPath()); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
 			if v, ok := strings.CutPrefix(strings.TrimSpace(line), "Version:"); ok {
 				return strings.TrimSpace(v)
+			}
+		}
+	}
+	if data, err := os.ReadFile(d.apkDBPath()); err == nil {
+		if v := versionFromApkDB(string(data), "nikki"); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// opkgControlPath / apkDBPath fall back to the production defaults so
+// adapters built by hand (tests) do not need every field set.
+func (d *RouterAdapter) opkgControlPath() string {
+	if d.OpkgControlPath != "" {
+		return d.OpkgControlPath
+	}
+	return DefaultOpkgControl
+}
+
+func (d *RouterAdapter) apkDBPath() string {
+	if d.ApkDBPath != "" {
+		return d.ApkDBPath
+	}
+	return DefaultApkDB
+}
+
+// versionFromApkDB returns the version of the record whose package name
+// is name ("" when the package is absent). The apk installed database
+// stores one record per package: "P:<name>", "V:<version>", … blocks.
+func versionFromApkDB(db, name string) string {
+	current := ""
+	for _, line := range strings.Split(db, "\n") {
+		switch {
+		case strings.HasPrefix(line, "P:"):
+			current = strings.TrimSpace(strings.TrimPrefix(line, "P:"))
+		case strings.HasPrefix(line, "V:"):
+			if current == name {
+				return strings.TrimSpace(strings.TrimPrefix(line, "V:"))
 			}
 		}
 	}
