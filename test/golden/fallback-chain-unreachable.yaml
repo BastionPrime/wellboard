@@ -1,0 +1,3 @@
+ERROR
+wellboard: profile generation failed:
+  group grp_fb2: member srv_head not found, skipped
