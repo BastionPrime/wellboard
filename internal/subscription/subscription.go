@@ -64,6 +64,10 @@ const maxBodyBytes = 64 << 20
 // errNoHWID is a programming error: the updater was built without an HWID.
 var errNoHWID = errors.New("subscription: no HWID configured")
 
+// ErrBodyTooLarge: the subscription body exceeded maxBodyBytes. The read
+// is aborted at the limit — the body is never fully buffered.
+var ErrBodyTooLarge = fmt.Errorf("subscription: body exceeds %d bytes", maxBodyBytes)
+
 // ----------------------------------------------------------------------------
 // Fetch layer
 // ----------------------------------------------------------------------------
@@ -189,6 +193,12 @@ func (c *Client) Fetch(ctx context.Context, rawURL, hwid string, dev DeviceInfo)
 				// away (R2 path may be disabled or the URL already has a
 				// different shape) — not a retry.
 				lastErr = classifyStatus(status, hdr)
+			case status >= 500:
+				// Server-side failures are transient by definition: retry
+				// the candidate (the plain-URL fallback still applies on
+				// 404 only — a 5xx on /mihomo means the panel itself is
+				// struggling, not the path strategy).
+				lastErr = classifyStatus(status, hdr)
 			default:
 				// Definitive answers (404 plain, 403, 401, hwid-limit
 				// 404) are returned, not retried.
@@ -287,6 +297,16 @@ func (c *Client) requestOnce(ctx context.Context, url, hwid string, dev DeviceIn
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		return nil, ResponseHeaders{}, resp.StatusCode, fmt.Errorf("subscription: read body: %w", err)
+	}
+	if len(body) == maxBodyBytes {
+		// The limit was hit. Probe one byte beyond it: a body exactly of
+		// the cap size is pathological but technically allowed; anything
+		// longer is rejected. The deferred resp.Body.Close() then aborts
+		// the connection instead of draining the rest of the stream.
+		var probe [1]byte
+		if n, _ := resp.Body.Read(probe[:]); n > 0 {
+			return nil, ResponseHeaders{}, resp.StatusCode, ErrBodyTooLarge
+		}
 	}
 	return body, parseHeaders(resp.Header), resp.StatusCode, nil
 }
