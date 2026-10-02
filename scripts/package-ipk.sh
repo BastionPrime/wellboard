@@ -12,13 +12,14 @@
 # Toolchain resolution:
 #   1. $IPKG_BUILD           — explicit path to ipkg-build
 #   2. ipkg-build on PATH
-# Without one the script FAILS: it never falls back to a hand-made
-# archive (that is the whole point of this change).
+#   3. pinned download of the official OpenWrt script (tag + sha256
+#      checked) into the build's temp dir
+# Without any of them the script FAILS: it never falls back to a
+# hand-made archive (that is the whole point of this change).
 #
-# Where ipkg-build comes from: an OpenWrt buildroot/SDK checkout
-# (scripts/ipkg-build) or the standalone opkg-utils package.
+# Where ipkg-build comes from otherwise: an OpenWrt buildroot/SDK
+# checkout (scripts/ipkg-build) or the standalone opkg-utils package.
 #   IPKG_BUILD=~/openwrt/scripts/ipkg-build scripts/package-ipk.sh ...
-# The build-matrix workflow downloads it before packaging.
 #
 # It also needs GNU tar and binutils ar (the buildroot provides both).
 # A busybox tar silently produces EMPTY control/data archives and a
@@ -89,12 +90,36 @@ esac
 } > "$STAGE/CONTROL/control"
 
 IPKG_BUILD="${IPKG_BUILD:-$(command -v ipkg-build 2>/dev/null || true)}"
+
+# Pinned fallback: the official OpenWrt ipkg-build at a released tag,
+# verified by sha256. Pinning (rather than tracking master) keeps the
+# package layout reproducible; the checksum makes the download safe.
+IPKG_BUILD_REF="v24.10.0"
+IPKG_BUILD_SHA256="60714afe9b93fd0d3ecfd2fcef7839928b1a99e826ae30e2e3c0e24f1efde474"
+IPKG_BUILD_URL="https://raw.githubusercontent.com/openwrt/openwrt/${IPKG_BUILD_REF}/scripts/ipkg-build"
+if [ -z "$IPKG_BUILD" ] && command -v curl >/dev/null 2>&1; then
+    if curl -fsSL -o "$WORK/ipkg-build" "$IPKG_BUILD_URL" 2>/dev/null &&
+        echo "$IPKG_BUILD_SHA256  $WORK/ipkg-build" | sha256sum -c - >/dev/null 2>&1; then
+        chmod +x "$WORK/ipkg-build"
+        IPKG_BUILD="$WORK/ipkg-build"
+        echo "package-ipk: using the pinned OpenWrt ipkg-build ($IPKG_BUILD_REF)"
+    else
+        echo "package-ipk: pinned ipkg-build download/checksum failed" >&2
+    fi
+fi
+
 if [ -z "$IPKG_BUILD" ] || [ ! -x "$IPKG_BUILD" ]; then
     echo "package-ipk: ipkg-build not found." >&2
     echo "  Provide the real opkg toolchain, e.g.:" >&2
     echo "    IPKG_BUILD=<openwrt-checkout>/scripts/ipkg-build scripts/package-ipk.sh ..." >&2
     echo "  (a hand-made ar archive is deliberately NOT produced)" >&2
     exit 1
+fi
+
+# ipkg-build needs GNU tar (see the header): warn early and loudly.
+if ! tar --version 2>/dev/null | head -n 1 | grep -q "GNU tar"; then
+    echo "package-ipk: warning: tar is not GNU tar; ipkg-build will pack EMPTY archives." >&2
+    echo "  Install GNU tar (busybox tar does not honour --format=gnu/--sort/--mtime)." >&2
 fi
 
 # ipkg-build packs $STAGE into $DIST/<Package>_<Version>_<Architecture>.ipk

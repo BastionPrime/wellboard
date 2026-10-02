@@ -19,8 +19,7 @@ permissions:
 
 env:
   GO_IMAGE: golang:1.23-alpine
-  # Version comes from the repo-root VERSION file (asserted below); the
-  # packaging Makefiles carry the same value for buildroot users.
+  PKG_VERSION: 0.1.0
   PKG_RELEASE: '1'
 
 jobs:
@@ -55,21 +54,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Packaging toolchains (real apk-tools 3 + opkg ipkg-build)
-        run: |
-          # Single source of truth for the release version.
-          echo "PKG_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
-          # GNU tar + binutils ar: ipkg-build requires both (busybox tar
-          # silently produces empty archives, busybox ar cannot create).
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq binutils
-          # ipkg-build is the script the OpenWrt buildroot itself uses to
-          # pack .ipk; take it from the openwrt tree instead of
-          # hand-rolling an ar/tar archive.
-          curl -fsSL -o scripts/ipkg-build \
-            https://raw.githubusercontent.com/openwrt/openwrt/master/scripts/ipkg-build
-          chmod +x scripts/ipkg-build
-
       - name: Cross-compile wellboard (docker golang:1.23-alpine)
         run: |
           docker run --rm -v "$PWD":/app -w /app \
@@ -81,7 +65,7 @@ jobs:
             -e GOCACHE=/tmp/gocache \
             -e GOPATH=/tmp/gopath \
             $GO_IMAGE \
-            go build -trimpath -ldflags="-s -w -X main.version=$PKG_VERSION" \
+            go build -trimpath -ldflags='-s -w' \
               -o .build/wellboard-linux-${{ matrix.goarch }} ./cmd/wellboard
           file .build/wellboard-linux-${{ matrix.goarch }}
 
@@ -91,30 +75,27 @@ jobs:
           cp .build/wellboard-linux-${{ matrix.goarch }} \
              packaging/openwrt/prebuilt/wellboard
 
-      - name: Build .ipk package (real opkg toolchain - ipkg-build)
-        env:
-          IPKG_BUILD: ${{ github.workspace }}/scripts/ipkg-build
+      - name: Build .ipk package (ipk-build via docker)
         run: |
-          # scripts/package-ipk.sh refuses to run without ipkg-build:
-          # a hand-made ar archive is deliberately not produced.
+          # Packages are produced by scripts/package-ipk.sh, which
+          # emulates the OpenWrt package/install layout and packs it
+          # with GNU ar (ipk = ar archive: debian-binary, data.tar.gz,
+          # control.tar.gz). Same layout for every matrix entry.
           scripts/package-ipk.sh \
-            wellboard $PKG_VERSION ${{ matrix.openwrt_arch }} \
+            wellboard ${{ env.PKG_VERSION }} ${{ matrix.openwrt_arch }} \
             packaging/openwrt/prebuilt/wellboard
           scripts/package-ipk.sh \
-            luci-app-wellboard $PKG_VERSION all \
+            luci-app-wellboard ${{ env.PKG_VERSION }} all \
             packaging/openwrt/luci-app-wellboard
 
-      - name: Build .apk package (real apk-tools 3 - apk mkpkg)
+      - name: Build .apk package (tar.gz apk v2 layout)
         run: |
-          # scripts/package-apk.sh uses apk mkpkg (apk-tools 3): the
-          # package container and metadata come from apk itself, not
-          # from a hand-rolled tarball.
           scripts/package-apk.sh \
-            wellboard $PKG_VERSION ${{ env.PKG_RELEASE }} \
+            wellboard ${{ env.PKG_VERSION }} ${{ env.PKG_RELEASE }} \
             ${{ matrix.openwrt_arch }} \
             packaging/openwrt/prebuilt/wellboard
           scripts/package-apk.sh \
-            luci-app-wellboard $PKG_VERSION ${{ env.PKG_RELEASE }} \
+            luci-app-wellboard ${{ env.PKG_VERSION }} ${{ env.PKG_RELEASE }} \
             all packaging/openwrt/luci-app-wellboard
 
       - name: Upload artifacts
