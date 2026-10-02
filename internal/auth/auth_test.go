@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -251,26 +252,108 @@ func TestLoginRejectsWrongPasswordAndThrottles(t *testing.T) {
 	}
 	_, handler := newTestConfig(t, login)
 
-	attempt := func(password, remote string) int {
+	attempt := func(password, remote string) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(loginRequest{Password: password})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(string(body)))
 		req.RemoteAddr = remote
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
-		return rec.Code
+		return rec
 	}
 
 	for i := 0; i < loginMaxAttempts; i++ {
-		if got := attempt("wrong", "192.0.2.1:1000"); got != http.StatusUnauthorized {
-			t.Fatalf("attempt %d = %d, want 401", i+1, got)
+		if got := attempt("wrong", "192.0.2.1:1000"); got.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d = %d, want 401", i+1, got.Code)
 		}
 	}
-	if got := attempt("wrong", "192.0.2.1:1001"); got != http.StatusTooManyRequests {
-		t.Fatalf("throttled attempt = %d, want 429", got)
+	throttled := attempt("wrong", "192.0.2.1:1001")
+	if throttled.Code != http.StatusTooManyRequests {
+		t.Fatalf("throttled attempt = %d, want 429", throttled.Code)
+	}
+	// The cooldown lasts the rest of the login window (rounded up to
+	// seconds) and is reported via Retry-After.
+	wantRetry := int(loginWindow.Seconds())
+	if got := throttled.Header().Get("Retry-After"); got != strconv.Itoa(wantRetry) {
+		t.Fatalf("Retry-After = %q, want %d", got, wantRetry)
 	}
 	// The throttle is per client address: another LAN host can still log in.
-	if got := attempt("secret", "192.0.2.2:1000"); got != http.StatusOK {
-		t.Fatalf("login from another address = %d, want 200", got)
+	if got := attempt("secret", "192.0.2.2:1000"); got.Code != http.StatusOK {
+		t.Fatalf("login from another address = %d, want 200", got.Code)
+	}
+	// A throttled address cannot get back in with the right password
+	// either: the cooldown blocks the attempt outright.
+	if got := attempt("secret", "192.0.2.1:1002"); got.Code != http.StatusTooManyRequests {
+		t.Fatalf("throttled correct-password attempt = %d, want 429", got.Code)
+	}
+}
+
+func TestLimiterWindowExpiry(t *testing.T) {
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	l := NewLimiter(func() time.Time { return now })
+	const ip = "192.0.2.1"
+
+	for i := 0; i < loginMaxAttempts; i++ {
+		if !l.allow(ip) {
+			t.Fatalf("attempt %d unexpectedly throttled", i+1)
+		}
+		l.fail(ip)
+	}
+	if l.allow(ip) {
+		t.Fatal("address not throttled after max failures")
+	}
+
+	// The cooldown ends with the window: a new attempt is admitted
+	// once the window has fully passed.
+	now = now.Add(loginWindow + time.Second)
+	if !l.allow(ip) {
+		t.Fatal("address still throttled after the window expired")
+	}
+}
+
+func TestLimiterSuccessResetsFailures(t *testing.T) {
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	l := NewLimiter(func() time.Time { return now })
+	const ip = "192.0.2.1"
+
+	for i := 0; i < loginMaxAttempts-1; i++ {
+		l.fail(ip)
+	}
+	if !l.allow(ip) {
+		t.Fatal("address throttled before the failure limit")
+	}
+	// A successful login resets the counter for the address.
+	l.reset(ip)
+	for i := 0; i < loginMaxAttempts-1; i++ {
+		l.fail(ip)
+	}
+	if !l.allow(ip) {
+		t.Fatal("failures not reset after success: address throttled too early")
+	}
+}
+
+func TestLimiterIndependentAddresses(t *testing.T) {
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	l := NewLimiter(func() time.Time { return now })
+
+	for i := 0; i < loginMaxAttempts; i++ {
+		l.fail("192.0.2.1")
+	}
+	for i := 0; i < loginMaxAttempts; i++ {
+		l.fail("192.0.2.2")
+	}
+	if l.allow("192.0.2.1") || l.allow("192.0.2.2") {
+		t.Fatal("throttled addresses admitted")
+	}
+	if !l.allow("192.0.2.3") {
+		t.Fatal("unrelated address throttled")
+	}
+	// Resetting one address must not clear the other's failures.
+	l.reset("192.0.2.1")
+	if !l.allow("192.0.2.1") {
+		t.Fatal("reset address still throttled")
+	}
+	if l.allow("192.0.2.2") {
+		t.Fatal("reset leaked into another address")
 	}
 }
 
