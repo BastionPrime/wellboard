@@ -27,7 +27,7 @@ var defaultTags = []string{
 // are returned lowercase, deduplicated, sorted.
 func KnownGeositeTags(datPaths []string) []string {
 	for _, p := range datPaths {
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) // #nosec G304 -- datPaths are nikki run-dir paths collected by the adapter, not user-supplied
 		if err != nil {
 			continue
 		}

@@ -357,7 +357,7 @@ func (s *Server) serveMetaCubeXDConfig(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, body)
+	_, _ = io.WriteString(w, body)
 }
 
 // handleMihomoProxy forwards /api/mihomo/* to the mihomo
@@ -447,13 +447,13 @@ func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, target *
 	up.Host = target.Host
 	// Absolute-form request URI for the handshake.
 	if err := up.Write(backend); err != nil {
-		backend.Close()
+		_ = backend.Close()
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("write ws handshake: %v", err)})
 		return
 	}
 	client, buf, err := hj.Hijack()
 	if err != nil {
-		backend.Close()
+		_ = backend.Close()
 		return
 	}
 	// The hijacked client conn may carry buffered bytes (rare for WS).
@@ -464,10 +464,12 @@ func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, target *
 			_, _ = backend.Write(b)
 		}
 		_, _ = io.Copy(backend, client)
+		// #nosec G104 -- error-path cleanup close in the WS proxy pump; nothing to do with a failed close
 		backend.Close()
 	}()
 	go func() {
 		_, _ = io.Copy(client, backend)
+		// #nosec G104 -- error-path cleanup close in the WS proxy pump; nothing to do with a failed close
 		client.Close()
 	}()
 }
@@ -485,11 +487,4 @@ func singleJoiningSlash(a, b string) string {
 	default:
 		return a + b
 	}
-}
-
-// basicAuthChallenge writes a WWW-Authenticate header (unused in dev;
-// kept for the phase 6 auth wiring).
-func basicAuthChallenge(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", `Basic realm="wellboard"`)
-	writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
 }
