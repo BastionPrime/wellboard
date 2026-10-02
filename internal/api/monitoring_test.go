@@ -156,7 +156,7 @@ func TestRollbackEndpoint(t *testing.T) {
 }
 
 func TestLogsEndpoint(t *testing.T) {
-	lg := applog.New("", 100)
+	lg := applog.New("", 100, false)
 	lg.Printf("apply: profile p1 ok=true")
 	_, ts := newMonitorTestServer(t, MonitorConfig{Logs: lg})
 	defer ts.Close()

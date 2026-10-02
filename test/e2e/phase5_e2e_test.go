@@ -95,7 +95,7 @@ func newP5Stack(t *testing.T) *p5Stack {
 
 	applyer := apply.New(adapter, stStore, nil, filepath.Join(dir, "apply"))
 
-	lg := applog.New(filepath.Join(dir, "wellboard.log"), 0)
+	lg := applog.New(filepath.Join(dir, "wellboard.log"), 0, false)
 	lg.Printf("e2e: phase 5 stack up")
 
 	srv := api.NewServer(stStore, nil)
