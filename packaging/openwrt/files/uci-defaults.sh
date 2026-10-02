@@ -1,7 +1,9 @@
-# WellBoard uci-defaults script, run once at first boot after install.
+# WellBoard uci-defaults script, run once at first boot after install
+# (executed and then deleted by /etc/init.d/boot; opkg merely ships the
+# file, it does not run it).
 # Creates the state directory with restrictive permissions and enables
-# the service. opkg deletes /etc/uci-defaults entries after a
-# successful run; exit 0 is mandatory.
+# the service. exit 0 is mandatory or the script stays and reruns at
+# every boot.
 
 [ -d /etc/wellboard ] || {
 	mkdir -p /etc/wellboard
