@@ -3,6 +3,11 @@
 // local mihomo with mixed-port → curl through it lands in the expected
 // target (checked via the /connections API and logs).
 //
+// Desk-check 2026-10-02 (OPE-3740): every step below was re-verified
+// against the v1.0.4 code — see docs/DESKCHECK-E2E-PHASE3.md for the
+// step→behavior mapping. The v1.0.4 external-rules feature has its own
+// smoke scenario in phase3_external_rules_test.go.
+//
 // Build tags: this test needs the real mihomo binary (bin/mihomo,
 // fetched by scripts/fetch-mihomo.sh) and network access for geodata
 // auto-download. Skipped (t.Skip) when the binary is absent.
@@ -233,9 +238,9 @@ func TestPhase3E2E(t *testing.T) {
 	// mixed-port as an HTTP response with status 502 (Bad Gateway,
 	// body "Blocked") — NOT a transport error: the proxy accepts the
 	// request, matches the rule, and actively refuses the forward.
-	// (Observed with mihomo v1.19.31 in the e2e docker run:
-	// GET doubleclick.net through 127.0.0.1:17890 → 502.) 502-from-
-	// mihomo is therefore the EXPECTED success signal for REJECT —
+	// (Observed with mihomo v1.19.31 and re-verified with v1.19.13 in
+	// the e2e docker run: GET doubleclick.net through 127.0.0.1:17890
+	// → 502.) 502-from-mihomo is therefore the EXPECTED success signal for REJECT —
 	// an open connection that returns anything else would mean the
 	// route did not match. See docs/DECISIONS.md Phase 3 (P2).
 	code, body, err := proxy("http://doubleclick.net/")
