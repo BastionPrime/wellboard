@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,10 +28,11 @@ const (
 const DefaultUsername = "root"
 
 // loginWindow / loginMaxAttempts throttle password guessing. Five
-// failures from one address inside a minute are answered with 429.
+// failures from one address inside ten minutes are answered with 429
+// until the window expires (cooldown).
 const (
 	loginMaxAttempts = 5
-	loginWindow      = time.Minute
+	loginWindow      = 10 * time.Minute
 )
 
 // Config wires the auth handlers into the HTTP mux.
@@ -120,7 +122,9 @@ func (c *Config) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 	if !c.limiter().allow(ip) {
 		c.log("auth: login throttled for %s", ip)
-		w.Header().Set("Retry-After", "60")
+		if wait := c.limiter().retryAfter(ip); wait > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
+		}
 		writeError(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return
 	}
@@ -336,6 +340,22 @@ func (l *Limiter) allow(ip string) bool {
 		return true
 	}
 	return e.failures < loginMaxAttempts
+}
+
+// retryAfter reports how long the address must still wait before the
+// window ends; 0 when the address is not throttled. It feeds the
+// Retry-After header of the 429 response.
+func (l *Limiter) retryAfter(ip string) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e, ok := l.entries[ip]
+	if !ok {
+		return 0
+	}
+	if wait := l.now().Sub(e.until); wait > 0 {
+		return 0
+	}
+	return e.until.Sub(l.now())
 }
 
 func (l *Limiter) fail(ip string) {
