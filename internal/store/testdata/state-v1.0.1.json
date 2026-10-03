@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "settings": {
+    "ui_port": 8090,
+    "lang": "en",
+    "geodata": "",
+    "default_policy": {
+      "type": "direct"
+    },
+    "delay_test_interval_sec": 600
+  },
+  "sources": [
+    {
+      "id": "manual",
+      "kind": "manual",
+      "name": "Manual"
+    }
+  ],
+  "servers": [],
+  "groups": [],
+  "routes": [],
+  "lan_devices": []
+}
