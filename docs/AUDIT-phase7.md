@@ -71,6 +71,7 @@ DECISIONS-phase7 D30):
 | URL подписок не логируются | ✅ | `internal/subscription/updater.go:40-41,52` (Log callback «never URLs — guardrail 5»); логируется только результат merge |
 | mihomo API secret не уходит в браузер | ✅ | `internal/api/monitoring.go:355-367` (Authorization заменяется серверным Bearer), `monitoring.go:311-317` (config.js без секрета) |
 | Secret не хранится в UCI wellboard | ✅ | читается из nikki.mixin в рантайме (main.go / adapter) |
+| Тест: регрессионный гейт «секретов в логах нет» (п. 5) | ✅ | `internal/applog/redacted.go` (тест-хелпер RedactedLogger: перехват строк лога, проверки `HasSecret` / `HostOnly` — URL-фрагмент `http(s)://` в строке = падение, даже в форме `https://host/[url redacted]`), сценарии: `internal/subscription/secret_gate_test.go` (URL подписки с токеном при обновлении — в логе только host / `***`; `last_error` под тем же гейтом), `internal/api/secret_gate_test.go` (PATCH источника с новым токеном, импорт nikki и state с паролем прокси, end-to-end: колбэк лога → кольцевой буфер applog → `GET /api/v1/logs` без токена) |
 | HWID не в экспорте (FR-6.5) | ✅ | `internal/api/export.go` — state.json не содержит hwid (отдельный файл `internal/hwid/hwid.go:194-196`); тест `export_test.go` TestExportDoesNotContainHWID |
 
 ## 6. Auth / CSRF (NFR-2.2 / NFR-2.4)
