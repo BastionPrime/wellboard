@@ -57,7 +57,7 @@ metacubexd, как он версионируется, как попадает н
   дист не исполняется на сервере, это статика для браузера.
 - **Честное отсутствие:** если дист не скачан, `/ui/metacubexd/`
   отвечает 404 с подсказкой «run scripts/fetch-metacubexd.sh»
-  (`internal/api/monitoring.go:299-311`), а вкладка Monitoring
+  (`internal/api/monitoring.go:301-312`), а вкладка Monitoring
   показывает инструкцию вместо пустого iframe
   (`web/src/views/MonitoringView.vue:24-28`). Мёртвого UI нет.
 
@@ -138,7 +138,7 @@ secret — `test/e2e/phase5_e2e_test.go:421-431`.
   источник), его ответы ограничены самим ядром (REST API возвращает
   JSON-снапшоты и WS-события, а не произвольные файлы).
 - Все остальные входы лимитированы: JSON-эндпоинты 1 МиБ
-  (`internal/api/api.go:157-168`, decodeStrict + MaxBytesReader),
+  (`internal/api/api.go:214-225`, decodeStrict + MaxBytesReader),
   ответы подписки 64 МиБ (`internal/subscription/subscription.go`),
   диагностический зонд 1 КиБ (`internal/api/monitoring.go:275`).
 - Ставить лимит на потоковый WS-туннель (`/traffic`, `/logs`,
@@ -193,7 +193,7 @@ no-cache` (`internal/api/monitoring.go:340`), `config.js`
    `index.html`; перезапуск WellBoard не нужен — путь проверяется
    на каждый запрос через `UIDir` (статический путь, но раздача
    идёт по запросу; `os.Stat` в `handleMetaCubeXD`,
-   `internal/api/monitoring.go:299-311`).
+   `internal/api/monitoring.go:301-312`).
 
 Проверка после обновления (все команды — из чеккаута репо):
 
