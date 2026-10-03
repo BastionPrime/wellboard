@@ -76,8 +76,8 @@ Bootstrap-загрузка этих трёх сторов выполняется
    `{type}` (ветка group — WizardView.vue:58 — фактически мёртвый код, select шага 2
    даёт только direct/reject, WizardView.vue:128-129). `settings.patch({default_policy})`
    (`stores/settings.ts:33-47`): PATCH /api/v1/settings (api.go:162,
-   handleSettingsPatch — api.go:2062; отдельной валидации default_policy в patch нет —
-   target проверяется на этапе генерации).
+   handleSettingsPatch — api.go:2062; default_policy валидируется `validateTarget`
+   (api.go:2143-2148): server/group-цели должны существовать в состоянии).
 3. `applyTemplate()` (WizardView.vue:67-89): если шаблон не выбран — пропуск
    (WizardView.vue:68). Выбор target для шаблона **весь на клиенте**:
    - `all-vpn` → всегда `{type:'direct'}` (WizardView.vue:73-75);
@@ -187,4 +187,4 @@ SPA — встроенный в бинарь bundle (web/embed.go), поэтом
 
 ## Открытые вопросы/риски (баг-кандидаты — в тикете, не правки)
 
-См. список в тикете OPE-3717; здесь — те же пункты файл:строка.
+Баг-кандидаты зафиксированы отдельно от этой доки.
