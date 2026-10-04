@@ -288,5 +288,10 @@
   "routes.extImported": "OK: правило скопировано как маршрут {id} (выключен, включите и «Применить» по желанию)",
   "routes.extImportFailed": "Не удалось импортировать: {msg}",
   "routes.extEmpty": "Внешние правила не найдены (файл конфига отсутствует или без секции rules).",
-  "routes.extUnavailable": "Внешние правила недоступны: {msg}"
+  "routes.extUnavailable": "Внешние правила недоступны: {msg}",
+  "servers.editTitle": "Изменить сервер",
+  "servers.address": "Адрес",
+  "servers.addressHint": "Имя хоста или IP сервера",
+  "servers.updated": "Сервер обновлён",
+  "servers.updateFailed": "Не удалось обновить: {msg}"
 }
