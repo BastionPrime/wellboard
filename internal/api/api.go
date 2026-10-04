@@ -132,6 +132,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/servers", s.handleServersList)
 	mux.HandleFunc("POST /api/v1/servers", s.handleServersCreate)
 	mux.HandleFunc("GET /api/v1/servers/{id}", s.handleServerGet)
+	mux.HandleFunc("PUT /api/v1/servers/{id}", s.handleServerUpdate)
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", s.handleServerDelete)
 	mux.HandleFunc("GET /api/v1/groups", s.handleGroupsList)
 	mux.HandleFunc("POST /api/v1/groups", s.handleGroupsCreate)
@@ -620,6 +621,75 @@ func (s *Server) handleServerGet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+}
+
+// serverUpdateIn is the edit payload for PUT /api/v1/servers/{id}.
+// Only name, address (Raw.server) and Raw parameters change; the id,
+// source and route/group membership survive the edit.
+type serverUpdateIn struct {
+	Name     string         `json:"name"`
+	Address  string         `json:"address"`
+	RawPatch map[string]any `json:"raw_patch"`
+}
+
+// handleServerUpdate edits a manual server in place. The id and the
+// source are stable, so routes and groups keep their target.
+func (s *Server) handleServerUpdate(w http.ResponseWriter, r *http.Request) {
+	var in serverUpdateIn
+	if err := decodeStrict(r, &in, 0); err != nil {
+		writeError(w, err)
+		return
+	}
+	if strings.TrimSpace(in.Name) == "" {
+		writeError(w, httpErr(http.StatusBadRequest, "name is required"))
+		return
+	}
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+	id := r.PathValue("id")
+	idx := -1
+	for i := range st.Servers {
+		if st.Servers[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	// Renaming onto an existing server name conflicts (same rule the
+	// subscription merge applies by name/server/port).
+	for _, other := range st.Servers {
+		if other.ID != id && other.Name == strings.TrimSpace(in.Name) {
+			writeError(w, httpErr(http.StatusConflict, "server name %q is already taken", strings.TrimSpace(in.Name)))
+			return
+		}
+	}
+	srv := &st.Servers[idx]
+	if srv.Raw == nil {
+		srv.Raw = map[string]any{}
+	}
+	srv.Name = strings.TrimSpace(in.Name)
+	if addr := strings.TrimSpace(in.Address); addr != "" {
+		srv.Raw["server"] = addr
+	}
+	for k, v := range in.RawPatch {
+		if k == "server" || k == "name" {
+			continue // owned by the explicit fields above
+		}
+		srv.Raw[k] = v
+	}
+	if err := s.save(st); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.log("server %s updated (name %q)", id, srv.Name)
+	writeJSON(w, http.StatusOK, srv)
 }
 
 func (s *Server) handleServerDelete(w http.ResponseWriter, r *http.Request) {

@@ -670,3 +670,125 @@ func TestStateEndpointAndNotFound(t *testing.T) {
 		t.Fatal("unknown server must 404")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Server edit (PUT /servers/{id})
+// ----------------------------------------------------------------------------
+
+func TestServerUpdateRoundTrip(t *testing.T) {
+	srv, ts := newTestServer(t)
+	defer ts.Close()
+	addServerDirect(t, srv, "srv_edit1")
+
+	code, body := do(t, ts, "PUT", "/api/v1/servers/srv_edit1",
+		`{"name":"Edited NL","address":"198.51.100.7","raw_patch":{"port":443,"cipher":"chacha20"}}`)
+	if code != 200 {
+		t.Fatalf("PUT /servers/srv_edit1: %d %s", code, body)
+	}
+	var updated model.Server
+	if err := json.Unmarshal([]byte(body), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.ID != "srv_edit1" {
+		t.Fatalf("id must survive the edit, got %q", updated.ID)
+	}
+	if updated.SourceID != "src_manual" {
+		t.Fatalf("source must survive the edit, got %q", updated.SourceID)
+	}
+	if updated.Name != "Edited NL" {
+		t.Fatalf("name not applied: %q", updated.Name)
+	}
+	if updated.Raw["server"] != "198.51.100.7" {
+		t.Fatalf("address not applied: %v", updated.Raw["server"])
+	}
+	if updated.Raw["port"] != float64(443) || updated.Raw["cipher"] != "chacha20" {
+		t.Fatalf("raw patch not applied: %v", updated.Raw)
+	}
+	// Read back: the edit is persisted, not just echoed.
+	code, body = do(t, ts, "GET", "/api/v1/servers/srv_edit1", "")
+	if code != 200 {
+		t.Fatalf("GET after edit: %d %s", code, body)
+	}
+	var got model.Server
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Edited NL" || got.Raw["server"] != "198.51.100.7" {
+		t.Fatalf("edit not persisted: %+v", got)
+	}
+}
+
+func TestServerUpdateConflictName(t *testing.T) {
+	srv, ts := newTestServer(t)
+	defer ts.Close()
+	addServerDirect(t, srv, "srv_a")
+	addServerDirect(t, srv, "srv_b")
+
+	code, body := do(t, ts, "PUT", "/api/v1/servers/srv_b",
+		`{"name":"NL-srv_a"}`)
+	if code != 409 {
+		t.Fatalf("rename onto an existing name must 409, got %d %s", code, body)
+	}
+	// Renaming to the own name is not a conflict.
+	code, body = do(t, ts, "PUT", "/api/v1/servers/srv_a",
+		`{"name":"NL-srv_a"}`)
+	if code != 200 {
+		t.Fatalf("rename to own name must pass, got %d %s", code, body)
+	}
+}
+
+func TestServerUpdateKeepsRouteTarget(t *testing.T) {
+	srv, ts := newTestServer(t)
+	defer ts.Close()
+	addServerDirect(t, srv, "srv_routed")
+	// A route on the server.
+	st, err := srv.Store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Routes = append(st.Routes, model.Route{
+		ID: "rt_1", Name: "via srv", Enabled: true, Order: 1,
+		Conditions: []model.RouteCondition{{Type: "domain-suffix", Value: "example.com"}},
+		Target:     model.Target{Type: model.TargetServer, ID: "srv_routed"},
+	})
+	if err := srv.Store.Save(st); err != nil {
+		t.Fatal(err)
+	}
+
+	code, body := do(t, ts, "PUT", "/api/v1/servers/srv_routed",
+		`{"name":"renamed","address":"203.0.113.99"}`)
+	if code != 200 {
+		t.Fatalf("PUT: %d %s", code, body)
+	}
+	// The route still points at the same id (nothing to re-resolve).
+	st2 := getState(t, ts)
+	found := false
+	for _, rt := range st2.Routes {
+		if rt.ID == "rt_1" {
+			found = true
+			if rt.Target.ID != "srv_routed" {
+				t.Fatalf("route lost its target: %+v", rt.Target)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("route rt_1 vanished after the edit")
+	}
+	// Delete must still refuse: the edit does not detach routes.
+	if code, body := do(t, ts, "DELETE", "/api/v1/servers/srv_routed", ""); code != 409 {
+		t.Fatalf("DELETE with a route must 409, got %d %s", code, body)
+	}
+}
+
+func TestServerUpdateNotFoundAndValidation(t *testing.T) {
+	srv, ts := newTestServer(t)
+	defer ts.Close()
+	addServerDirect(t, srv, "srv_x")
+
+	if code, _ := do(t, ts, "PUT", "/api/v1/servers/srv_missing", `{"name":"n"}`); code != 404 {
+		t.Fatalf("missing server must 404, got %d", code)
+	}
+	if code, _ := do(t, ts, "PUT", "/api/v1/servers/srv_x", `{"name":"  "}`); code != 400 {
+		t.Fatalf("empty name must 400, got %d", code)
+	}
+}
