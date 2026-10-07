@@ -1,10 +1,15 @@
 include $(TOPDIR)/rules.mk
 
 # WellBoard is NOT compiled inside the buildroot: the binary is
-# prebuilt in a golang:1.23-alpine docker container by the Makefile in
-# the repository root (targets: make cross / scripts/cross-compile.sh)
-# and dropped into this directory before packaging. Build/Compile is
-# therefore a no-op that only verifies the expected binary exists.
+# prebuilt in a golang:1.23-alpine docker container by scripts/cross-compile.sh
+# (invoked from the repo-root Makefile target `make cross`; note that the
+# script writes .build/wellboard-<arch> — the arch-specific binary must be
+# staged manually into $(PREBUILT_DIR)/wellboard before running the
+# buildroot make here; the release path scripts/package-ipk.sh / package-apk.sh
+# consumes the same files directly and does NOT need this directory).
+# Build/Compile is therefore a no-op that only verifies the expected
+# binary exists; $(CURDIR)/templates below likewise refers to the repo
+# templates staged next to this Makefile, not to anything in git.
 PREBUILT_DIR ?= $(CURDIR)/prebuilt
 
 PKG_NAME:=wellboard
