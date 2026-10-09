@@ -9,9 +9,18 @@ package applog
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"sync"
+)
+
+// prodFileMode is the mirror file permission in prod (NFR-2.3; audit
+// AUDIT-phase7 §1, was ⚠ 0644). devFileMode is the umask-governed
+// default used in dev mode, matching internal/store conventions.
+const (
+	prodFileMode fs.FileMode = 0o600
+	devFileMode  fs.FileMode = 0o644
 )
 
 // DefaultBuffer is the in-memory ring capacity (lines).
@@ -27,20 +36,40 @@ type Log struct {
 	max    int
 	path   string
 	file   *os.File
+	prod   bool
 	closed bool
 }
 
 // New builds a Log. filePath may be "" (memory only). maxLines <= 0
-// falls back to DefaultBuffer.
-func New(filePath string, maxLines int) *Log {
+// falls back to DefaultBuffer. In prod mode (NFR-2.3, like
+// internal/store) the mirror file is created 0600 and re-chmod'ed on
+// every open, so a pre-existing 0644 file left by an older build is
+// tightened as soon as this build appends to it; dev mode leaves the
+// file mode to the umask.
+func New(filePath string, maxLines int, prod bool) *Log {
 	if maxLines <= 0 {
 		maxLines = DefaultBuffer
 	}
-	l := &Log{max: maxLines, path: filePath}
+	l := &Log{max: maxLines, path: filePath, prod: prod}
 	if filePath != "" {
 		// Append mode: restarts keep the previous tail.
-		if f, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
-			l.file = f
+		mode := devFileMode
+		if prod {
+			mode = prodFileMode
+		}
+		if f, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, mode); err == nil {
+			if prod {
+				// OpenFile mode only applies to newly created
+				// files; tighten an existing one the way
+				// internal/store.Save chmods its temp file.
+				if cerr := f.Chmod(prodFileMode); cerr != nil {
+					f.Close()
+				} else {
+					l.file = f
+				}
+			} else {
+				l.file = f
+			}
 		}
 	}
 	return l
