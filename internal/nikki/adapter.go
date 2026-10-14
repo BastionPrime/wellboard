@@ -159,7 +159,7 @@ func (d *DryRunAdapter) mihomoVersion() (string, error) {
 	if _, err := os.Stat(d.MihomoBin); err != nil {
 		return "", fmt.Errorf("mihomo binary %s: %w", d.MihomoBin, err)
 	}
-	out, err := exec.Command(d.MihomoBin, "-v").CombinedOutput()
+	out, err := exec.Command(d.MihomoBin, "-v").CombinedOutput() // #nosec G204 -- binary path comes from the operator-set MihomoBin config, args are fixed
 	if err != nil {
 		return "", fmt.Errorf("mihomo -v: %w: %s", err, firstLine(out))
 	}
@@ -168,10 +168,12 @@ func (d *DryRunAdapter) mihomoVersion() (string, error) {
 
 // WriteProfile stores the profile bytes as <dir>/<name>.yaml.
 func (d *DryRunAdapter) WriteProfile(name string, yamlData []byte) (string, error) {
+	// #nosec G301 -- dry-run dev dir holds profiles for the local user; no stricter mode needed
 	if err := os.MkdirAll(d.Dir, 0o755); err != nil {
 		return "", fmt.Errorf("create dry-run dir: %w", err)
 	}
 	path := filepath.Join(d.Dir, sanitizeName(name)+".yaml")
+	// #nosec G306 -- profiles carry no secrets (secrets are injected by mihomo at runtime); 0644 matches the nikki run dir on the router
 	if err := os.WriteFile(path, yamlData, 0o644); err != nil {
 		return "", fmt.Errorf("write dry-run profile: %w", err)
 	}
@@ -191,7 +193,7 @@ func (d *DryRunAdapter) Validate(path string) error {
 	// provider paths (./providers/…) resolve like they do under nikki.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, d.MihomoBin, "-t", "-d", filepath.Dir(path), "-f", path)
+	cmd := exec.CommandContext(ctx, d.MihomoBin, "-t", "-d", filepath.Dir(path), "-f", path) // #nosec G204 -- binary path is operator-set MihomoBin; paths are WellBoard-owned profile files, args are fixed
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("mihomo -t %s: %w: %s", path, err, firstLine(out))
@@ -219,13 +221,14 @@ func (d *DryRunAdapter) transportConfig() string {
 // pristine profile on disk for validate/history (FR-6.3).
 func (d *DryRunAdapter) runConfigPath(name string) (string, error) {
 	profilePath := filepath.Join(d.Dir, sanitizeName(name)+".yaml")
-	profile, err := os.ReadFile(profilePath)
+	profile, err := os.ReadFile(profilePath) // #nosec G304 -- profilePath is inside the WellBoard dry-run dir, built from a sanitized name
 	if err != nil {
 		return "", fmt.Errorf("dry-run activate: read profile %s: %w", profilePath, err)
 	}
 	runPath := filepath.Join(d.Dir, sanitizeName(name)+".run.yaml")
 	full := []byte(d.transportConfig())
 	full = append(full, profile...)
+	// #nosec G306 -- generated run config; secrets are injected by mihomo at runtime, 0644 matches the nikki run dir
 	if err := os.WriteFile(runPath, full, 0o644); err != nil {
 		return "", fmt.Errorf("dry-run activate: write run config: %w", err)
 	}
@@ -281,11 +284,11 @@ func (d *DryRunAdapter) Activate(name string) error {
 			bin = abs
 		}
 	}
-	cmd := exec.Command(bin, "-d", d.Dir, "-f", runPath)
+	cmd := exec.Command(bin, "-d", d.Dir, "-f", runPath) // #nosec G204 -- bin is operator-set MihomoBin resolved to an absolute path; d.Dir/runPath are WellBoard-owned paths, args are fixed
 	// Redirect output into a log file next to the profile so a failed
 	// start can be diagnosed (the API surfaces the path on error).
 	logPath := filepath.Join(d.Dir, sanitizeName(name)+".mihomo.log")
-	logF, err := os.Create(logPath)
+	logF, err := os.Create(logPath) // #nosec G304 -- logPath is inside the WellBoard dry-run dir, built from a sanitized name
 	if err != nil {
 		return fmt.Errorf("dry-run activate: create log: %w", err)
 	}
@@ -293,7 +296,7 @@ func (d *DryRunAdapter) Activate(name string) error {
 	cmd.Stderr = logF
 	cmd.Dir = d.Dir
 	if err := cmd.Start(); err != nil {
-		logF.Close()
+		_ = logF.Close()
 		return fmt.Errorf("dry-run activate: start mihomo: %w", err)
 	}
 	// Reap the child when it exits so it does not linger as a zombie.

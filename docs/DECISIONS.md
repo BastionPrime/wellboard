@@ -54,8 +54,13 @@ matcher at `.../services/response-rules-matcher.service.ts`.
   GOCACHE/GOPATH inside the container (`/tmp`) so the repo tree stays clean.
   go.mod pins `go 1.22` for stable toolchain semantics; the docker image
   (1.23) satisfies it.
-- **D4 — Lint.** CI lint = gofmt check + `go vet`. golangci-lint needs a
-  custom image or network fetch at CI time; deferred to a later phase.
+- **D4 — Lint.** `make lint` = gofmt check + `go vet` + `staticcheck` +
+  `gosec`, all inside the golang:1.23-alpine container; the two linters
+  are fetched at pinned versions with `go install` inside the throwaway
+  container (2026-10) and findings are triaged in-tree: real
+  issues fixed, false positives annotated with `#nosec` + reason.
+  golangci-lint still needs a custom image; remains deferred.
+  (Original D4: CI lint = gofmt check + `go vet` only.)
 - **D5 — Health endpoint.** `GET /api/v1/health` →
   `{"status":"ok","app":"wellboard","version":"dev"}`; version is injectable
   via `-ldflags "-X main.version=..."` for releases.

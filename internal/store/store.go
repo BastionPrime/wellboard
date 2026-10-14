@@ -185,15 +185,15 @@ func (s *Store) Save(st *model.State) error {
 	}()
 
 	if _, err = tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("write temp state: %w", err)
 	}
 	if err = tmp.Chmod(s.filePerm()); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("chmod temp state: %w", err)
 	}
 	if err = tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("sync temp state: %w", err)
 	}
 	if err = tmp.Close(); err != nil {
@@ -207,7 +207,7 @@ func (s *Store) Save(st *model.State) error {
 	// Make the rename durable (NFR-3: crash-safe state writes).
 	if dir, derr := os.Open(s.Root); derr == nil {
 		_ = dir.Sync()
-		dir.Close()
+		_ = dir.Close()
 	}
 	return nil
 }

@@ -49,7 +49,7 @@ func DefaultPathList() []string {
 func DiscoverSubscriptionURLs(paths []string) (urls []string, skipped int) {
 	seen := map[string]bool{}
 	for _, p := range paths {
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) // #nosec G304 -- paths are WellBoard-owned profile files inside the run dir, not user-supplied
 		if err != nil {
 			continue // missing/unreadable file: nothing to import
 		}

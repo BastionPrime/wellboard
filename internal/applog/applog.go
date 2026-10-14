@@ -39,6 +39,7 @@ func New(filePath string, maxLines int) *Log {
 	l := &Log{max: maxLines, path: filePath}
 	if filePath != "" {
 		// Append mode: restarts keep the previous tail.
+		// #nosec G304 G302 -- operator-set log path; 0644 is intentional: the app log is readable for tail diagnostics and carries no secrets (subscription URLs are redacted)
 		if f, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
 			l.file = f
 		}
@@ -93,6 +94,7 @@ func (l *Log) Tail(n int) []string {
 	path := l.path
 	l.mu.Unlock()
 	if len(lines) == 0 && path != "" {
+		// #nosec G304 -- path is the operator-set app log file, not user input
 		if data, err := os.ReadFile(path); err == nil {
 			all := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
 			if len(all) > n {

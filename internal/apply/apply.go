@@ -128,6 +128,7 @@ func (a *Applyer) loadHistory() []Record {
 
 // saveHistory atomically persists recs.
 func (a *Applyer) saveHistory(recs []Record) error {
+	// #nosec G301 -- apply history is non-sensitive metadata (step names, timestamps); 0755 matches the state tree convention
 	if err := os.MkdirAll(a.Dir, 0o755); err != nil {
 		return fmt.Errorf("apply: create history dir: %w", err)
 	}
@@ -136,6 +137,7 @@ func (a *Applyer) saveHistory(recs []Record) error {
 		return fmt.Errorf("apply: marshal history: %w", err)
 	}
 	tmp := a.historyPath() + ".tmp"
+	// #nosec G306 -- apply history contains no secrets; 0644 keeps it readable by the state tree convention
 	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
 		return fmt.Errorf("apply: write history: %w", err)
 	}

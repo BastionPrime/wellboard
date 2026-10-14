@@ -185,7 +185,7 @@ func (c *UbusClient) loginCLI(ctx context.Context, username, password string) (s
 			bin = "ubus"
 		}
 		run = func(ctx context.Context, args ...string) ([]byte, error) {
-			return exec.CommandContext(ctx, bin, args...).Output()
+			return exec.CommandContext(ctx, bin, args...).Output() // #nosec G204 -- bin is the operator-set UbusBin config (default "ubus"); args are constant literals set by this file
 		}
 	}
 	raw, err := run(ctx, "call", "session", "login", string(payload))

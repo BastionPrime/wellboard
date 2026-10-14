@@ -242,16 +242,18 @@ func versionFromApkDB(db, name string) string {
 // writes names it minted itself (wellboard-<timestamp>-<seq>), so the
 // owner's profiles are never overwritten.
 func (d *RouterAdapter) WriteProfile(name string, yamlData []byte) (string, error) {
+	// #nosec G301 -- mirrors the nikki profiles dir mode on the router; profiles contain no secrets
 	if err := os.MkdirAll(d.ProfilesDir, 0o755); err != nil {
 		return "", fmt.Errorf("router: create profiles dir: %w", err)
 	}
 	path := d.profilePath(name)
 	tmp := path + ".tmp"
+	// #nosec G306 -- profiles carry no secrets (mihomo injects them at runtime); 0644 matches the nikki profiles dir convention
 	if err := os.WriteFile(tmp, yamlData, 0o644); err != nil {
 		return "", fmt.Errorf("router: write profile: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return "", fmt.Errorf("router: commit profile: %w", err)
 	}
 	d.logf("nikki: wrote profile %s (%d bytes)", path, len(yamlData))
@@ -365,7 +367,7 @@ func (d *RouterAdapter) apiHealth(timeout time.Duration) error {
 		}
 		resp, err := client.Do(req)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				return nil
 			}

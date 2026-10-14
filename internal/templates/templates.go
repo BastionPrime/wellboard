@@ -210,7 +210,7 @@ func (c *Catalog) warnSkip(name string, err error) {
 // parseFile reads and unmarshals one template file; the file stem is
 // returned alongside the template.
 func parseFile(path string) (tpl Template, stem string, err error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path comes from walking the builtin templates dir or the state-dir overlay (ValidID-checked ids), not from user input
 	if err != nil {
 		return Template{}, "", fmt.Errorf("read: %w", err)
 	}
@@ -287,6 +287,7 @@ func WriteOverlay(dir string, tpl Template) error {
 	if !ValidID(tpl.ID) {
 		return fmt.Errorf("templates: bad template id %q", tpl.ID)
 	}
+	// #nosec G301 -- overlay dir holds non-secret template yamls; 0755 so they stay readable under a mode-0700 state dir, matching the templates convention
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("templates: create overlay dir: %w", err)
 	}
@@ -306,15 +307,15 @@ func WriteOverlay(dir string, tpl Template) error {
 		}
 	}()
 	if _, err = tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("templates: write temp file: %w", err)
 	}
 	if err = tmp.Chmod(0o644); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("templates: chmod temp file: %w", err)
 	}
 	if err = tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("templates: sync temp file: %w", err)
 	}
 	if err = tmp.Close(); err != nil {
