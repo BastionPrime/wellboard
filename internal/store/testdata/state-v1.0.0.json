@@ -1,0 +1,98 @@
+{
+  "version": 2,
+  "settings": {
+    "ui_port": 8090,
+    "lang": "ru",
+    "geodata": "metacubex",
+    "default_policy": {
+      "type": "direct"
+    },
+    "delay_test_interval_sec": 300
+  },
+  "sources": [
+    {
+      "id": "sub_1",
+      "kind": "subscription",
+      "name": "Main sub",
+      "url": "https://example.invalid/sub",
+      "enabled": true,
+      "update_interval_sec": 3600,
+      "last_update": "2026-09-01T10:00:00Z",
+      "userinfo": {
+        "upload": 1048576,
+        "download": 2097152,
+        "total": 10737418240,
+        "expire": 1798761600
+      },
+      "hwid_status": {
+        "active": true,
+        "limit_reached": false,
+        "not_supported": false
+      }
+    }
+  ],
+  "servers": [
+    {
+      "id": "srv_1",
+      "source_id": "sub_1",
+      "name": "DE server",
+      "type": "ss",
+      "raw": {
+        "type": "ss",
+        "server": "10.0.0.1",
+        "port": 8388,
+        "cipher": "aes-128-gcm",
+        "password": "fixture-not-a-secret"
+      },
+      "delay_ms": 42
+    },
+    {
+      "id": "srv_2",
+      "source_id": "sub_1",
+      "name": "Old server",
+      "type": "vmess",
+      "raw": {
+        "type": "vmess",
+        "server": "10.0.0.2",
+        "port": 443,
+        "uuid": "fixture-not-a-secret"
+      },
+      "stale": true,
+      "stale_misses": 2
+    }
+  ],
+  "groups": [
+    {
+      "id": "grp_1",
+      "name": "Auto",
+      "type": "url-test",
+      "members": ["srv_1", "srv_2"]
+    }
+  ],
+  "routes": [
+    {
+      "id": "rt_1",
+      "name": "Ads block",
+      "enabled": true,
+      "order": 1,
+      "conditions": [
+        {
+          "type": "geosite",
+          "value": "category-ads"
+        }
+      ],
+      "target": {
+        "type": "reject"
+      },
+      "on_unavailable": "block"
+    }
+  ],
+  "lan_devices": [
+    {
+      "mac": "AA:BB:CC:DD:EE:FF",
+      "ip": "192.168.1.50",
+      "hostname": "fixture-tv",
+      "static": true
+    }
+  ]
+}

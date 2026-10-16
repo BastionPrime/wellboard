@@ -35,6 +35,8 @@ export interface ServerNode {
   type: string
   delay_ms?: number
   stale?: boolean
+  // raw is the mihomo proxy map (PUT /servers/{id} patches entries).
+  raw?: { server?: string; [key: string]: unknown }
 }
 
 export interface Group {

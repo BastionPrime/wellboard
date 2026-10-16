@@ -243,6 +243,20 @@ export const usePoolStore = defineStore('pool', {
       await api('/servers/' + id, { method: 'DELETE' })
       this.servers = this.servers.filter((s) => s.id !== id)
     },
+    // updateServer edits name/address/parameters in place
+    // (PUT /servers/{id}); the id and route/group membership survive.
+    async updateServer(
+      id: string,
+      input: { name: string; address?: string; raw_patch?: Record<string, unknown> },
+    ): Promise<ServerNode> {
+      const out = await api<ServerNode>('/servers/' + id, {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      })
+      const i = this.servers.findIndex((s) => s.id === id)
+      if (i >= 0) this.servers[i] = out
+      return out
+    },
     // addManualServers pastes share links (vless://…) — POST /servers,
     // the server parses them with the mihomo converter (FR-1.3).
     async addManualServers(links: string) {

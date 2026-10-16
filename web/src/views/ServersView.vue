@@ -18,7 +18,46 @@ const addError = ref('')
 const addOk = ref('')
 const adding = ref(false)
 
+const editError = ref('')
+const editOk = ref('')
+const editing = ref<string | null>(null)
+const saving = ref(false)
+const editForm = reactive({ name: '', address: '' })
+
 const form = reactive({ links: '' })
+
+function startEdit(s: { id: string; name: string; raw?: { server?: unknown } }) {
+  editError.value = ''
+  editOk.value = ''
+  editing.value = s.id
+  editForm.name = s.name
+  editForm.address = typeof s.raw?.server === 'string' ? s.raw.server : ''
+}
+
+function cancelEdit() {
+  editing.value = null
+  editError.value = ''
+}
+
+async function saveEdit() {
+  const id = editing.value
+  if (!id) return
+  editError.value = ''
+  editOk.value = ''
+  saving.value = true
+  try {
+    await pool.updateServer(id, {
+      name: editForm.name.trim(),
+      address: editForm.address.trim(),
+    })
+    editOk.value = t('servers.updated')
+    editing.value = null
+  } catch (e) {
+    editError.value = t('servers.updateFailed', { msg: e instanceof Error ? e.message : String(e) })
+  } finally {
+    saving.value = false
+  }
+}
 
 const filtered = () => {
   const q = search.value.trim().toLowerCase()
@@ -75,6 +114,25 @@ async function addManual() {
 
     <input v-model="search" class="search" :placeholder="t('servers.search')" />
 
+    <form v-if="editing" class="edit-form" @submit.prevent="saveEdit">
+      <label>
+        <span>{{ t('servers.editTitle') }}</span>
+        <input v-model="editForm.name" class="field" :placeholder="t('sources.name')" />
+      </label>
+      <label>
+        <span>{{ t('servers.address') }}</span>
+        <input v-model="editForm.address" class="field" :placeholder="t('servers.addressHint')" />
+      </label>
+      <div class="edit-actions">
+        <button type="submit" class="add" :disabled="saving || !editForm.name.trim()">
+          {{ saving ? t('common.loading') : t('common.save') }}
+        </button>
+        <button type="button" class="cancel" @click="cancelEdit">{{ t('common.cancel') }}</button>
+      </div>
+      <p v-if="editError" class="error">{{ editError }}</p>
+    </form>
+    <p v-if="editOk" class="ok">{{ editOk }}</p>
+
     <table v-if="pool.servers.length" class="table">
       <thead>
         <tr>
@@ -95,6 +153,7 @@ async function addManual() {
             <template v-else>{{ t('servers.delayNotTested') }}</template>
           </td>
           <td class="actions">
+            <button class="edit" @click="startEdit(s)">{{ t('common.edit') }}</button>
             <button class="danger" @click="pool.deleteServer(s.id).catch(() => {})">{{ t('common.delete') }}</button>
           </td>
         </tr>
@@ -201,6 +260,55 @@ tr.stale td {
 }
 .actions {
   text-align: right;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.edit-form {
+  display: grid;
+  gap: 6px;
+  max-width: 480px;
+  margin: 0 0 14px;
+  padding: 10px;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  background: #eef2ff;
+}
+.edit-form label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.85rem;
+  color: #444;
+}
+.field {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+.edit-actions {
+  display: flex;
+  gap: 8px;
+}
+.edit {
+  background: #fff;
+  color: #1d4ed8;
+  border: 1px solid #1d4ed8;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.cancel {
+  background: #fff;
+  color: #444;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 .danger {
   background: #fff;
