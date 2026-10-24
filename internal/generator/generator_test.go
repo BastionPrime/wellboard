@@ -169,6 +169,114 @@ func allScenarios() []scenario {
 		OnUnavailable: "block",
 	}}
 
+	// mixed-groups-routes: groups of all types targeted by routes with
+	// mixed condition kinds (geosite + domain + geoip + port), plus a
+	// direct-target route, in a non-trivial order. Expectation: every
+	// condition becomes one rule line pointing at its rt:<id> service
+	// group; rules follow ascending order; MATCH,rt:default last.
+	mixedGroups := baseState()
+	mixedGroups.Servers = []model.Server{srvNL1, srvNL2}
+	mixedGroups.Groups = []model.Group{
+		{ID: "grp_pick", Name: "Pick", Type: model.GroupSelect, Members: []string{"srv_9f3", "srv_1c2"}},
+		{ID: "grp_auto", Name: "Auto", Type: model.GroupURLTest, Members: []string{"srv_9f3", "grp_pick"}},
+		{ID: "grp_chain", Name: "Chain", Type: model.GroupFallback, Members: []string{"srv_1c2", "srv_9f3"}},
+		{ID: "grp_lb", Name: "Balanced", Type: model.GroupLoadBalance, Members: []string{"grp_pick", "srv_9f3"}},
+	}
+	mixedGroups.Routes = []model.Route{
+		{
+			ID: "rt_geo", Name: "Streaming", Enabled: true, Order: 10,
+			Conditions: []model.RouteCondition{
+				{Type: model.CondGeosite, Value: "youtube"},
+				{Type: model.CondDomainSuffix, Value: "netflix.com"},
+			},
+			Target: model.Target{Type: model.TargetGroup, ID: "grp_chain"},
+		},
+		{
+			ID: "rt_mix", Name: "Mixed", Enabled: true, Order: 20,
+			Conditions: []model.RouteCondition{
+				{Type: model.CondGeoIP, Value: "ru"},
+				{Type: model.CondIPCIDR, Value: "10.0.0.0/8"},
+				{Type: model.CondDstPort, Value: "443"},
+			},
+			Target: model.Target{Type: model.TargetGroup, ID: "grp_auto"},
+		},
+		{
+			ID: "rt_dir", Name: "Bypass", Enabled: true, Order: 30,
+			Conditions:    []model.RouteCondition{{Type: model.CondDomainKeyword, Value: "local"}},
+			Target:        model.Target{Type: model.TargetDirect},
+			OnUnavailable: "direct",
+		},
+	}
+
+	// fallback-chain-unreachable: a fallback chain whose head member
+	// dropped out of the pool (stale server). The group itself is NOT a
+	// lost target — the route targets the group, which resolves — but
+	// the group member IS: the generator reports it as a problem and
+	// aborts (a silently shortened chain would change failover
+	// behaviour without the user noticing). The golden file captures
+	// the error report. How the chain actually fails over with the
+	// live members is covered by the mixed-groups-routes golden.
+	fbChain := baseState()
+	srvHead := mkServer("srv_head", "src_manual", "Head", "socks5", 443)
+	srvHead.Stale = true
+	fbChain.Servers = []model.Server{srvHead, srvNL2}
+	fbChain.Groups = []model.Group{
+		{ID: "grp_fb2", Name: "Fallback chain", Type: model.GroupFallback, Members: []string{"srv_head", "srv_1c2"}},
+	}
+	fbChain.Routes = []model.Route{{
+		ID: "rt_1", Name: "Streaming", Enabled: true, Order: 10,
+		Conditions:    []model.RouteCondition{{Type: model.CondDomainSuffix, Value: "netflix.com"}},
+		Target:        model.Target{Type: model.TargetGroup, ID: "grp_fb2"},
+		OnUnavailable: "block",
+	}}
+
+	// collision-groups-sanitized: duplicate display names across proxies
+	// AND groups exercise the SHARED sanitization namespace (mihomo
+	// requires unique names across both): both groups reuse the exact
+	// name of an existing proxy, so the proxy keeps the base name and
+	// the groups get " #2"/" #3"; route references resolve to the
+	// sanitized group names.
+	collisionGroups := baseState()
+	collisionGroups.Servers = []model.Server{
+		mkServer("srv_a", "sub_a1", "NL-1", "socks5", 443),
+		mkServer("srv_b", "sub_b2", "NL-1", "socks5", 443),
+	}
+	collisionGroups.Groups = []model.Group{
+		{ID: "grp_dup", Name: "NL-1 [WellDone]", Type: model.GroupSelect, Members: []string{"srv_a", "srv_b"}},
+		{ID: "grp_dup2", Name: "NL-1 [WellDone]", Type: model.GroupURLTest, Members: []string{"srv_a", "srv_b"}},
+	}
+	collisionGroups.Routes = []model.Route{{
+		ID: "rt_1", Name: "Dup", Enabled: true, Order: 10,
+		Conditions: []model.RouteCondition{{Type: model.CondDomainSuffix, Value: "netflix.com"}},
+		Target:     model.Target{Type: model.TargetGroup, ID: "grp_dup"},
+	}}
+
+	// external-plus-generated (v1.0.4 import feature shape): a route
+	// imported from the live nikki config (Enabled: false — the import
+	// writes disabled routes) coexists with a generated (enabled) route.
+	// Expectation: the disabled imported route emits NO rules and NO
+	// rt: service group; only the enabled route reaches the profile.
+	externalMixed := baseState()
+	externalMixed.Servers = []model.Server{srvNL1}
+	externalMixed.Routes = []model.Route{
+		{
+			// imported from nikki: same condition shape as the real
+			// import path produces (importableRuleTypes +
+			// defaultImportName "nikki: ..." naming), disabled by
+			// default, high order so it sorts before the user route.
+			ID: "rt_imp", Name: "nikki: DOMAIN-SUFFIX openai.com", Enabled: false, Order: 10,
+			Conditions:    []model.RouteCondition{{Type: model.CondDomainSuffix, Value: "openai.com"}},
+			Target:        model.Target{Type: model.TargetDirect},
+			OnUnavailable: "block",
+		},
+		{
+			ID: "rt_gen", Name: "Generated", Enabled: true, Order: 20,
+			Conditions:    []model.RouteCondition{{Type: model.CondDomainSuffix, Value: "netflix.com"}},
+			Target:        model.Target{Type: model.TargetServer, ID: "srv_9f3"},
+			OnUnavailable: "block",
+		},
+	}
+
 	return []scenario{
 		{name: "empty-state", state: func() *model.State { return empty }},
 		{name: "servers-only", state: func() *model.State { return cloneState(serversOnly) }},
@@ -179,6 +287,10 @@ func allScenarios() []scenario {
 		{name: "default-policy-target", state: func() *model.State { return cloneState(defaultTarget) }},
 		{name: "name-collision", state: func() *model.State { return cloneState(collision) }},
 		{name: "lost-target", state: func() *model.State { return cloneState(lostTarget) }, wantFail: true},
+		{name: "mixed-groups-routes", state: func() *model.State { return cloneState(mixedGroups) }},
+		{name: "fallback-chain-unreachable", state: func() *model.State { return cloneState(fbChain) }, wantFail: true},
+		{name: "collision-groups-sanitized", state: func() *model.State { return cloneState(collisionGroups) }},
+		{name: "external-plus-generated", state: func() *model.State { return cloneState(externalMixed) }},
 	}
 }
 
