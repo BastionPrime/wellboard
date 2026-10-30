@@ -839,6 +839,7 @@ func TestServerDisableEnableRoundTrip(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("enable must return 200, got %d: %s", code, body)
 	}
+	out = model.Server{}
 	if err := json.Unmarshal([]byte(body), &out); err != nil {
 		t.Fatal(err)
 	}
@@ -873,8 +874,8 @@ func TestSourceDisableEnableRoundTrip(t *testing.T) {
 
 	// Add a subscription source
 	code, body := do(t, ts, "POST", "/api/v1/sources", `{"kind":"subscription","name":"Sub1","url":"https://example.com/sub"}`)
-	if code != 200 {
-		t.Fatalf("create source must return 200, got %d: %s", code, body)
+	if code != 201 {
+		t.Fatalf("create source must return 201, got %d: %s", code, body)
 	}
 	var src model.Source
 	if err := json.Unmarshal([]byte(body), &src); err != nil {
@@ -899,6 +900,7 @@ func TestSourceDisableEnableRoundTrip(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("enable source must return 200, got %d: %s", code, body)
 	}
+	out = model.Source{}
 	if err := json.Unmarshal([]byte(body), &out); err != nil {
 		t.Fatal(err)
 	}
