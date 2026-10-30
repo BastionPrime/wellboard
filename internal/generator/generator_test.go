@@ -637,7 +637,7 @@ func TestGeneratorExcludesDisabledServersAndSources(t *testing.T) {
 	st.Sources = []model.Source{subY, subWDisabled, manu}
 	st.Servers = []model.Server{srv1, srv2, srv3, srv4}
 
-	out, err := Generate(st, Options{})
+	out, err := Generate(st)
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
 	}
