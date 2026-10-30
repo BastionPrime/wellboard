@@ -792,3 +792,125 @@ func TestServerUpdateNotFoundAndValidation(t *testing.T) {
 		t.Fatalf("empty name must 400, got %d", code)
 	}
 }
+
+func TestServerDisableEnableRoundTrip(t *testing.T) {
+	srv, ts := newTestServer(t)
+	defer ts.Close()
+	addServerDirect(t, srv, "srv_toggle")
+
+	// Initially disabled is false
+	st := getState(t, ts)
+	for _, s := range st.Servers {
+		if s.ID == "srv_toggle" && s.Disabled {
+			t.Fatalf("expected server to be enabled initially")
+		}
+	}
+
+	// Disable
+	code, body := do(t, ts, "POST", "/api/v1/servers/srv_toggle/disable", "")
+	if code != 200 {
+		t.Fatalf("disable must return 200, got %d: %s", code, body)
+	}
+	var out model.Server
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !out.Disabled {
+		t.Fatalf("expected disabled=true in response, got %+v", out)
+	}
+
+	// Verify via state
+	st = getState(t, ts)
+	found := false
+	for _, s := range st.Servers {
+		if s.ID == "srv_toggle" {
+			found = true
+			if !s.Disabled {
+				t.Fatalf("server in state must be disabled")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("server srv_toggle not found in state")
+	}
+
+	// Enable
+	code, body = do(t, ts, "POST", "/api/v1/servers/srv_toggle/enable", "")
+	if code != 200 {
+		t.Fatalf("enable must return 200, got %d: %s", code, body)
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Disabled {
+		t.Fatalf("expected disabled=false in response, got %+v", out)
+	}
+
+	// Verify via state
+	st = getState(t, ts)
+	for _, s := range st.Servers {
+		if s.ID == "srv_toggle" && s.Disabled {
+			t.Fatalf("server in state must be enabled after enable")
+		}
+	}
+}
+
+func TestServerDisableNotFound(t *testing.T) {
+	_, ts := newTestServer(t)
+	defer ts.Close()
+
+	if code, _ := do(t, ts, "POST", "/api/v1/servers/missing/disable", ""); code != 404 {
+		t.Fatalf("missing server disable must 404, got %d", code)
+	}
+	if code, _ := do(t, ts, "POST", "/api/v1/servers/missing/enable", ""); code != 404 {
+		t.Fatalf("missing server enable must 404, got %d", code)
+	}
+}
+
+func TestSourceDisableEnableRoundTrip(t *testing.T) {
+	_, ts := newTestServer(t)
+	defer ts.Close()
+
+	// Add a subscription source
+	code, body := do(t, ts, "POST", "/api/v1/sources", `{"kind":"subscription","name":"Sub1","url":"https://example.com/sub"}`)
+	if code != 200 {
+		t.Fatalf("create source must return 200, got %d: %s", code, body)
+	}
+	var src model.Source
+	if err := json.Unmarshal([]byte(body), &src); err != nil {
+		t.Fatal(err)
+	}
+
+	// Disable source
+	code, body = do(t, ts, "POST", "/api/v1/sources/"+src.ID+"/disable", "")
+	if code != 200 {
+		t.Fatalf("disable source must return 200, got %d: %s", code, body)
+	}
+	var out model.Source
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !out.Disabled || out.Enabled {
+		t.Fatalf("expected disabled=true, enabled=false, got %+v", out)
+	}
+
+	// Enable source
+	code, body = do(t, ts, "POST", "/api/v1/sources/"+src.ID+"/enable", "")
+	if code != 200 {
+		t.Fatalf("enable source must return 200, got %d: %s", code, body)
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Disabled || !out.Enabled {
+		t.Fatalf("expected disabled=false, enabled=true, got %+v", out)
+	}
+
+	// 404
+	if code, _ := do(t, ts, "POST", "/api/v1/sources/missing/disable", ""); code != 404 {
+		t.Fatalf("missing source disable must 404, got %d", code)
+	}
+	if code, _ := do(t, ts, "POST", "/api/v1/sources/missing/enable", ""); code != 404 {
+		t.Fatalf("missing source enable must 404, got %d", code)
+	}
+}

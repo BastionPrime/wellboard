@@ -82,6 +82,8 @@
   "servers.delayNotTested": "not tested",
   "servers.stale": "lost from subscription",
   "servers.staleHint": "Excluded from generation: routes on it report “target lost”",
+  "servers.disabled": "disabled",
+  "servers.disabledHint": "Excluded from generation without deleting",
   "servers.delayTestNote": "Periodic delay testing is done by the scheduler (interval in settings). There is no per-server test endpoint in the API yet — the last measured value is shown.",
   "servers.bySource": "Source: {name}",
   "routes.title": "Routes",
