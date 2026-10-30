@@ -80,6 +80,7 @@ export interface Settings {
   geodata_additions?: Record<string, string[]>
   default_policy: Target
   delay_test_interval_sec: number
+  delay_test_url?: string
   disabled_templates?: string[]
   // A3: masked sources list for the settings page (the full
   // URL is a secret and is not sent to this screen).
@@ -192,6 +193,21 @@ export interface Diagnostics {
 // Phase 5: logs (FR-9.2).
 export interface Logs {
   lines: string[]
+}
+
+// Per-server delay test (OPE-4115): GET /api/v1/servers/{id}/delay.
+export interface DelayTestResult {
+  id: string
+  name: string
+  delay_ms: number
+  url: string
+}
+
+// formatDelay renders a measured latency for the servers table
+// (unit-tested; the view never formats inline).
+export function formatDelay(ms: number | null | undefined): string {
+  if (ms == null || ms <= 0) return ''
+  return `${ms} ms`
 }
 
 // APIError is the JSON error body returned by writeError ({error: "..."}).
