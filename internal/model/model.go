@@ -27,6 +27,10 @@ type Settings struct {
 	// DelayTestIntervalSec is how often proxy groups re-test latency
 	// (FR-9.1).
 	DelayTestIntervalSec int `json:"delay_test_interval_sec"`
+	// DelayTestURL is the target URL of the per-server delay test
+	// (GET /api/v1/servers/{id}/delay → mihomo /proxies/{name}/delay).
+	// Empty = DefaultDelayTestURL.
+	DelayTestURL string `json:"delay_test_url,omitempty"`
 	// DefaultPolicy is the MATCH policy for traffic matched by no rule
 	// (FR-4.6, decision Q3: user-configurable, default DIRECT).
 	DefaultPolicy Target `json:"default_policy"`
@@ -55,6 +59,11 @@ type Settings struct {
 	// custom ids alike; "disabling a builtin" is this list.
 	DisabledTemplates []string `json:"disabled_templates,omitempty"`
 }
+
+// DefaultDelayTestURL is the fallback target of the per-server delay
+// test when Settings.DelayTestURL is empty (same 204 endpoint mihomo
+// uses for url-test groups).
+const DefaultDelayTestURL = "http://www.gstatic.com/generate_204"
 
 // SourceKind distinguishes subscriptions from the manual entry source.
 type SourceKind string
