@@ -169,9 +169,15 @@ func allScenarios() []scenario {
 		OnUnavailable: "block",
 	}}
 
+	serverDisabled := baseState()
+	srvNL2Disabled := srvNL2
+	srvNL2Disabled.Disabled = true
+	serverDisabled.Servers = []model.Server{srvNL1, srvNL2Disabled}
+
 	return []scenario{
 		{name: "empty-state", state: func() *model.State { return empty }},
 		{name: "servers-only", state: func() *model.State { return cloneState(serversOnly) }},
+		{name: "server-disabled", state: func() *model.State { return cloneState(serverDisabled) }},
 		{name: "groups-all-types", state: func() *model.State { return cloneState(groupAllTypes) }},
 		{name: "route-block", state: func() *model.State { return cloneState(routeBlock) }},
 		{name: "route-direct", state: func() *model.State { return cloneState(routeDirect) }},
@@ -610,6 +616,69 @@ func TestGoldenFilesListed(t *testing.T) {
 		if _, err := os.Stat(p); err != nil {
 			t.Errorf("golden file missing: %s (run go test -update)", p)
 		}
+	}
+}
+
+func TestGeneratorExcludesDisabledServersAndSources(t *testing.T) {
+	st := baseState()
+	// Source 1 (subY, enabled) has srv1 (enabled) and srv2 (disabled)
+	srv1 := mkServer("srv_1", "sub_a1", "Srv-1", "socks5", 443)
+	srv2 := mkServer("srv_2", "sub_a1", "Srv-2", "socks5", 444)
+	srv2.Disabled = true
+
+	// Source 2 (subW) is disabled
+	subWDisabled := subW
+	subWDisabled.Disabled = true
+	// Source 3 (manu) has srv3
+	srv3 := mkServer("srv_3", "src_manual", "Srv-3", "trojan", 443)
+	// Server 4 in disabled source subW
+	srv4 := mkServer("srv_4", "sub_b2", "Srv-4", "socks5", 445)
+
+	st.Sources = []model.Source{subY, subWDisabled, manu}
+	st.Servers = []model.Server{srv1, srv2, srv3, srv4}
+
+	out, err := Generate(st)
+	if err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	var parsed struct {
+		Proxies []map[string]any `yaml:"proxies"`
+	}
+	if err := yaml.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("unmarshal generated config: %v", err)
+	}
+
+	names := make([]string, 0, len(parsed.Proxies))
+	for _, p := range parsed.Proxies {
+		if n, ok := p["name"].(string); ok {
+			names = append(names, n)
+		}
+	}
+
+	// Srv-1 [WellDone] and Srv-3 [Вручную] should be present.
+	// Srv-2 (disabled server) and Srv-4 (in disabled source) must NOT be present.
+	hasSrv1 := false
+	hasSrv3 := false
+	for _, n := range names {
+		if strings.HasPrefix(n, "Srv-1") {
+			hasSrv1 = true
+		}
+		if strings.HasPrefix(n, "Srv-2") {
+			t.Errorf("disabled server Srv-2 appeared in proxies: %v", names)
+		}
+		if strings.HasPrefix(n, "Srv-3") {
+			hasSrv3 = true
+		}
+		if strings.HasPrefix(n, "Srv-4") {
+			t.Errorf("server Srv-4 from disabled source appeared in proxies: %v", names)
+		}
+	}
+	if !hasSrv1 {
+		t.Errorf("expected Srv-1 in proxies, got: %v", names)
+	}
+	if !hasSrv3 {
+		t.Errorf("expected Srv-3 in proxies, got: %v", names)
 	}
 }
 

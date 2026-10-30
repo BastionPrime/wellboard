@@ -243,6 +243,13 @@ export const usePoolStore = defineStore('pool', {
       await api('/servers/' + id, { method: 'DELETE' })
       this.servers = this.servers.filter((s) => s.id !== id)
     },
+    async setServerDisabled(id: string, disabled: boolean) {
+      const endpoint = disabled ? `/servers/${id}/disable` : `/servers/${id}/enable`
+      const out = await api<ServerNode>(endpoint, { method: 'POST' })
+      const i = this.servers.findIndex((s) => s.id === id)
+      if (i >= 0) this.servers[i] = out
+      return out
+    },
     // updateServer edits name/address/parameters in place
     // (PUT /servers/{id}); the id and route/group membership survive.
     async updateServer(

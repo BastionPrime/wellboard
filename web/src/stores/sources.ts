@@ -38,13 +38,14 @@ export const useSourcesStore = defineStore('sources', {
       this.sources = this.sources.filter((s) => s.id !== id)
     },
     async setEnabled(id: string, enabled: boolean) {
-      const src = await api<Source>('/sources/' + id, {
-        method: 'PATCH',
-        body: JSON.stringify({ enabled }),
-      })
+      const endpoint = enabled ? `/sources/${id}/enable` : `/sources/${id}/disable`
+      const src = await api<Source>(endpoint, { method: 'POST' })
       const i = this.sources.findIndex((s) => s.id === id)
       if (i >= 0) this.sources[i] = src
       return src
+    },
+    async setDisabled(id: string, disabled: boolean) {
+      return this.setEnabled(id, !disabled)
     },
   },
 })

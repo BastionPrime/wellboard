@@ -73,6 +73,7 @@ type Source struct {
 	Name              string      `json:"name"`
 	URL               string      `json:"url,omitempty"`
 	Enabled           bool        `json:"enabled,omitempty"`
+	Disabled          bool        `json:"disabled,omitempty"`
 	UpdateIntervalSec int         `json:"update_interval_sec,omitempty"`
 	LastUpdate        string      `json:"last_update,omitempty"`
 	LastError         *string     `json:"last_error,omitempty"`
@@ -112,6 +113,9 @@ type Server struct {
 	// Stale marks a server that vanished from its subscription (FR-4.8):
 	// it is excluded from generation; routes on it report "target lost".
 	Stale bool `json:"stale,omitempty"`
+	// Disabled marks a server disabled by the operator without deleting it (OPE-4112).
+	// It is excluded from generation; routes on it report "target lost".
+	Disabled bool `json:"disabled,omitempty"`
 	// StaleMisses counts consecutive updates the server was absent
 	// (initial TZ 5.7.5: delete after 3). Reset when it reappears.
 	// Schema v2 (Phase 2); migrated from the Phase 1 raw-map encoding.

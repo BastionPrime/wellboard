@@ -20,6 +20,7 @@ export interface Source {
   name: string
   url?: string
   enabled?: boolean
+  disabled?: boolean
   update_interval_sec?: number
   last_update?: string
   last_error?: string | null
@@ -35,6 +36,7 @@ export interface ServerNode {
   type: string
   delay_ms?: number
   stale?: boolean
+  disabled?: boolean
   // raw is the mihomo proxy map (PUT /servers/{id} patches entries).
   raw?: { server?: string; [key: string]: unknown }
 }

@@ -82,7 +82,7 @@ function lastUpdate(s: { last_update?: string }): string {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="s in sources.sources" :key="s.id" :class="{ off: !s.enabled }">
+        <tr v-for="s in sources.sources" :key="s.id" :class="{ off: !s.enabled || s.disabled }">
           <td>
             <div>{{ s.name }}</div>
             <div class="sub">{{ t('sources.kind.' + s.kind) }}</div>
@@ -97,8 +97,8 @@ function lastUpdate(s: { last_update?: string }): string {
           </td>
           <td class="actions">
             <label class="switch">
-              <input type="checkbox" :checked="s.enabled" @change="toggle(s.id, ($event.target as HTMLInputElement).checked)" />
-              <span>{{ s.enabled ? t('common.on') : t('common.off') }}</span>
+              <input type="checkbox" :checked="s.enabled && !s.disabled" @change="toggle(s.id, ($event.target as HTMLInputElement).checked)" />
+              <span>{{ (s.enabled && !s.disabled) ? t('common.on') : t('common.off') }}</span>
             </label>
             <button class="danger" @click="remove(s.id)">{{ t('common.delete') }}</button>
           </td>

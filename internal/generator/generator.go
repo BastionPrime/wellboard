@@ -192,12 +192,13 @@ func marshalProfile(doc *profile) (out []byte, err error) {
 func build(st *model.State) (*profile, error) {
 	prob := &Problems{}
 
-	// Enabled sources: manual buckets are always live; subscriptions only
-	// when enabled. Source display names feed the proxy naming scheme.
+	// Enabled sources: manual buckets are always live unless explicitly disabled;
+	// subscriptions only when enabled and not disabled. Source display names feed
+	// the proxy naming scheme.
 	srcEnabled := map[string]bool{}
 	srcName := map[string]string{}
 	for _, src := range st.Sources {
-		if src.Kind == string(model.SourceManual) || src.Enabled {
+		if (src.Kind == string(model.SourceManual) || src.Enabled) && !src.Disabled {
 			srcEnabled[src.ID] = true
 			srcName[src.ID] = src.Name
 		}
@@ -211,7 +212,7 @@ func build(st *model.State) (*profile, error) {
 	proxies := make([]map[string]any, 0, len(st.Servers))
 	nameByID := map[string]string{} // server ID → mihomo proxy name
 	for _, srv := range st.Servers {
-		if !srcEnabled[srv.SourceID] || srv.Stale {
+		if !srcEnabled[srv.SourceID] || srv.Stale || srv.Disabled {
 			continue // not part of the active pool
 		}
 		if len(srv.Raw) == 0 {

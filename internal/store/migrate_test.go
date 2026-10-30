@@ -151,3 +151,53 @@ func TestV2StateRoundTrip(t *testing.T) {
 		t.Fatalf("version must be %d, got %d", CurrentVersion, got.Version)
 	}
 }
+
+func TestMigrateLegacyDisabledFieldDefault(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir, false)
+	// Legacy state with a source and a server that have no disabled field
+	legacy := `{
+		"version": 3,
+		"settings": {
+			"ui_port": 8090, "lang": "ru",
+			"geosite_source": "runetfreedom", "geoip_source": "runetfreedom",
+			"default_policy": {"type": "direct"}
+		},
+		"sources": [
+			{"id": "src_1", "kind": "subscription", "name": "Sub", "url": "https://example.com", "enabled": true}
+		],
+		"servers": [
+			{"id": "srv_1", "source_id": "src_1", "name": "NL-1", "type": "socks5", "raw": {"server": "1.1.1.1", "port": 1080}}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Sources) != 1 || st.Sources[0].Disabled {
+		t.Fatalf("expected legacy source disabled to default to false, got %v", st.Sources[0].Disabled)
+	}
+	if len(st.Servers) != 1 || st.Servers[0].Disabled {
+		t.Fatalf("expected legacy server disabled to default to false, got %v", st.Servers[0].Disabled)
+	}
+
+	// Saving with disabled server/source persists the field
+	st.Servers[0].Disabled = true
+	st.Sources[0].Disabled = true
+	if err := s.Save(st); err != nil {
+		t.Fatal(err)
+	}
+	st2, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st2.Sources[0].Disabled {
+		t.Fatalf("saved disabled source must persist as true")
+	}
+	if !st2.Servers[0].Disabled {
+		t.Fatalf("saved disabled server must persist as true")
+	}
+}

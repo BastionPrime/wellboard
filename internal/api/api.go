@@ -129,11 +129,15 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/sources/{id}", s.handleSourceGet)
 	mux.HandleFunc("PATCH /api/v1/sources/{id}", s.handleSourcePatch)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", s.handleSourceDelete)
+	mux.HandleFunc("POST /api/v1/sources/{id}/disable", s.handleSourceDisable)
+	mux.HandleFunc("POST /api/v1/sources/{id}/enable", s.handleSourceEnable)
 	mux.HandleFunc("GET /api/v1/servers", s.handleServersList)
 	mux.HandleFunc("POST /api/v1/servers", s.handleServersCreate)
 	mux.HandleFunc("GET /api/v1/servers/{id}", s.handleServerGet)
 	mux.HandleFunc("PUT /api/v1/servers/{id}", s.handleServerUpdate)
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", s.handleServerDelete)
+	mux.HandleFunc("POST /api/v1/servers/{id}/disable", s.handleServerDisable)
+	mux.HandleFunc("POST /api/v1/servers/{id}/enable", s.handleServerEnable)
 	mux.HandleFunc("GET /api/v1/groups", s.handleGroupsList)
 	mux.HandleFunc("POST /api/v1/groups", s.handleGroupsCreate)
 	mux.HandleFunc("GET /api/v1/groups/{id}", s.handleGroupGet)
@@ -269,6 +273,7 @@ type sourceIn struct {
 	Name              string `json:"name"`
 	URL               string `json:"url"`
 	Enabled           *bool  `json:"enabled"`
+	Disabled          *bool  `json:"disabled"`
 	UpdateIntervalSec *int   `json:"update_interval_sec"`
 }
 
@@ -330,9 +335,13 @@ func (s *Server) handleSourcesCreate(w http.ResponseWriter, r *http.Request) {
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
+	disabled := false
+	if in.Disabled != nil {
+		disabled = *in.Disabled
+	}
 	src := model.Source{
 		ID: newID("sub", st), Kind: in.Kind, Name: in.Name, URL: in.URL,
-		Enabled: enabled,
+		Enabled: enabled, Disabled: disabled,
 	}
 	if in.UpdateIntervalSec != nil {
 		if *in.UpdateIntervalSec < 60 {
@@ -431,6 +440,7 @@ type sourcePatch struct {
 	Name              *string `json:"name"`
 	URL               *string `json:"url"`
 	Enabled           *bool   `json:"enabled"`
+	Disabled          *bool   `json:"disabled"`
 	UpdateIntervalSec *int    `json:"update_interval_sec"`
 }
 
@@ -472,6 +482,13 @@ func (s *Server) handleSourcePatch(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Enabled != nil {
 		src.Enabled = *in.Enabled
+		src.Disabled = !*in.Enabled
+	}
+	if in.Disabled != nil {
+		src.Disabled = *in.Disabled
+		if src.Kind == string(model.SourceSubscription) {
+			src.Enabled = !*in.Disabled
+		}
 	}
 	if in.UpdateIntervalSec != nil {
 		if *in.UpdateIntervalSec != 0 && *in.UpdateIntervalSec < 60 {
@@ -524,6 +541,39 @@ func (s *Server) handleSourceDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log("source %s deleted", id)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) handleSourceDisable(w http.ResponseWriter, r *http.Request) {
+	s.setSourceDisabled(w, r, true)
+}
+
+func (s *Server) handleSourceEnable(w http.ResponseWriter, r *http.Request) {
+	s.setSourceDisabled(w, r, false)
+}
+
+func (s *Server) setSourceDisabled(w http.ResponseWriter, r *http.Request, disabled bool) {
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+
+	idx := sourceIndex(st, r.PathValue("id"))
+	if idx < 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
+		return
+	}
+
+	st.Sources[idx].Disabled = disabled
+	if st.Sources[idx].Kind == string(model.SourceSubscription) {
+		st.Sources[idx].Enabled = !disabled
+	}
+	if err := s.save(st); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st.Sources[idx])
 }
 
 // ----------------------------------------------------------------------------
@@ -629,6 +679,7 @@ func (s *Server) handleServerGet(w http.ResponseWriter, r *http.Request) {
 type serverUpdateIn struct {
 	Name     string         `json:"name"`
 	Address  string         `json:"address"`
+	Disabled *bool          `json:"disabled"`
 	RawPatch map[string]any `json:"raw_patch"`
 }
 
@@ -677,6 +728,9 @@ func (s *Server) handleServerUpdate(w http.ResponseWriter, r *http.Request) {
 	srv.Name = strings.TrimSpace(in.Name)
 	if addr := strings.TrimSpace(in.Address); addr != "" {
 		srv.Raw["server"] = addr
+	}
+	if in.Disabled != nil {
+		srv.Disabled = *in.Disabled
 	}
 	for k, v := range in.RawPatch {
 		if k == "server" || k == "name" {
@@ -730,8 +784,43 @@ func (s *Server) handleServerDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// ----------------------------------------------------------------------------
-// Groups (FR-3.3)
+func (s *Server) handleServerDisable(w http.ResponseWriter, r *http.Request) {
+	s.setServerDisabled(w, r, true)
+}
+
+func (s *Server) handleServerEnable(w http.ResponseWriter, r *http.Request) {
+	s.setServerDisabled(w, r, false)
+}
+
+func (s *Server) setServerDisabled(w http.ResponseWriter, r *http.Request, disabled bool) {
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+
+	id := r.PathValue("id")
+	idx := -1
+	for i := range st.Servers {
+		if st.Servers[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+
+	st.Servers[idx].Disabled = disabled
+	if err := s.save(st); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st.Servers[idx])
+}
+
 // ----------------------------------------------------------------------------
 
 // groupIn is the create/update payload for a proxy group.
