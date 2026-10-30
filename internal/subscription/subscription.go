@@ -156,6 +156,18 @@ func NewClient(version string) *Client {
 	}
 }
 
+// backoffWait sleeps for d unless ctx is done. It is a package-level
+// seam so tests can observe (and fast-forward) the retry backoff
+// instead of wall-clock waiting; production behavior is time.After.
+var backoffWait = func(ctx context.Context, d time.Duration) error {
+	select {
+	case <-time.After(d):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // Fetch implements Fetcher with the R2/R3 strategy, 20s timeout and 2
 // retries with linear backoff.
 func (c *Client) Fetch(ctx context.Context, rawURL, hwid string, dev DeviceInfo) ([]byte, ResponseHeaders, error) {
@@ -175,10 +187,8 @@ func (c *Client) Fetch(ctx context.Context, rawURL, hwid string, dev DeviceInfo)
 	var lastErr error
 	for attempt := 0; attempt <= Retries; attempt++ {
 		if attempt > 0 {
-			select {
-			case <-time.After(backoff * time.Duration(attempt)):
-			case <-ctx.Done():
-				return nil, ResponseHeaders{}, ctx.Err()
+			if err := backoffWait(ctx, backoff*time.Duration(attempt)); err != nil {
+				return nil, ResponseHeaders{}, err
 			}
 		}
 		for i, url := range candidates {
