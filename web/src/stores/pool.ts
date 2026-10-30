@@ -265,8 +265,6 @@ export const usePoolStore = defineStore('pool', {
       if (i >= 0) this.servers[i].delay_ms = out.delay_ms
       return out
     },
-      return out
-    },
     // addManualServers pastes share links (vless://…) — POST /servers,
     // the server parses them with the mihomo converter (FR-1.3).
     async addManualServers(links: string) {
