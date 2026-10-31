@@ -27,7 +27,6 @@ import (
 
 	"github.com/wellboard/wellboard/internal/generator"
 	"github.com/wellboard/wellboard/internal/model"
-	"github.com/wellboard/wellboard/internal/nikki"
 	"github.com/wellboard/wellboard/internal/templates"
 )
 

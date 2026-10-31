@@ -2,11 +2,12 @@
 package api
 
 import (
-	"github.com/wellboard/wellboard/internal/model"
-	"github.com/wellboard/wellboard/internal/nikki"
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/wellboard/wellboard/internal/model"
+	"github.com/wellboard/wellboard/internal/nikki"
 )
 
 type routeIn struct {
