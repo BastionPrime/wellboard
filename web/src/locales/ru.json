@@ -293,5 +293,9 @@
   "servers.address": "Адрес",
   "servers.addressHint": "Имя хоста или IP сервера",
   "servers.updated": "Сервер обновлён",
-  "servers.updateFailed": "Не удалось обновить: {msg}"
+  "servers.updateFailed": "Не удалось обновить: {msg}",
+  "servers.pin": "Закрепить",
+  "servers.unpin": "Открепить",
+  "servers.pinned": "Закреплен",
+  "servers.pinnedHint": "Защитить сервер от удаления и переименования при обновлении подписки"
 }

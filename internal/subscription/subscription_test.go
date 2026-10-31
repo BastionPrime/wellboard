@@ -326,6 +326,50 @@ func TestMergeStaleServerResurrected(t *testing.T) {
 	}
 }
 
+func TestMergePinnedServerSurvivesRenameAndCleanup(t *testing.T) {
+	st := testState()
+	pinned := map[string]any{"name": "NL-1", "type": "ss", "server": "203.0.113.10", "port": 8388, "password": "old"}
+	Merge(st, "sub_1", []map[string]any{pinned})
+	st.Servers[0].Pinned = true
+	id := st.Servers[0].ID
+
+	// The subscription changes the display name and raw settings. The
+	// pinned server retains its identity and user-selected representation.
+	res := Merge(st, "sub_1", []map[string]any{{"name": "renamed", "type": "ss", "server": "203.0.113.10", "port": 8388, "password": "new"}})
+	if res.Updated != 1 || len(st.Servers) != 1 {
+		t.Fatalf("rename update: %+v, servers=%d", res, len(st.Servers))
+	}
+	if st.Servers[0].ID != id || st.Servers[0].Name != "NL-1" || st.Servers[0].Raw["password"] != "old" {
+		t.Fatalf("pinned server was overwritten: %+v", st.Servers[0])
+	}
+
+	// Missing subscription entries stay stale-but-pinned and are never deleted.
+	for i := 0; i < StaleAfterUpdates+1; i++ {
+		Merge(st, "sub_1", nil)
+	}
+	if len(st.Servers) != 1 || !st.Servers[0].Pinned || !st.Servers[0].Stale || st.Servers[0].ID != id {
+		t.Fatalf("pinned server was cleaned up: %+v", st.Servers)
+	}
+}
+
+func TestMergeUnpinnedServerStillGetsRenamedAndDeleted(t *testing.T) {
+	st := testState()
+	Merge(st, "sub_1", []map[string]any{{"name": "NL-1", "type": "ss", "server": "203.0.113.10", "port": 8388}})
+	// Unpinned rename: the renamed entry is added as a new server; the old
+	// name ages through the stale window and is deleted (main semantics).
+	res := Merge(st, "sub_1", []map[string]any{{"name": "renamed", "type": "ss", "server": "203.0.113.10", "port": 8388}})
+	if res.Added != 1 || res.Stale != 1 {
+		t.Fatalf("rename should add new + stale old: %+v", res)
+	}
+	renamed := []map[string]any{{"name": "renamed", "type": "ss", "server": "203.0.113.10", "port": 8388}}
+	for i := 0; i < StaleAfterUpdates; i++ {
+		Merge(st, "sub_1", renamed)
+	}
+	if len(st.Servers) != 1 || st.Servers[0].Name != "renamed" {
+		t.Fatalf("old unpinned entry should be deleted after window: %+v", st.Servers)
+	}
+}
+
 func TestMergeOtherSourcesUntouched(t *testing.T) {
 	st := testState()
 	st.Servers = append(st.Servers, model.Server{
