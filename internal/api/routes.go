@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/wellboard/wellboard/internal/model"
-	"github.com/wellboard/wellboard/internal/nikki"
 )
 
 type routeIn struct {
