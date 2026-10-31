@@ -293,5 +293,9 @@
   "servers.address": "Address",
   "servers.addressHint": "Server hostname or IP",
   "servers.updated": "Server updated",
-  "servers.updateFailed": "Update failed: {msg}"
+  "servers.updateFailed": "Update failed: {msg}",
+  "servers.pin": "Pin",
+  "servers.unpin": "Unpin",
+  "servers.pinned": "Pinned",
+  "servers.pinnedHint": "Protect server from being removed or renamed on subscription refresh"
 }

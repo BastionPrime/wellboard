@@ -116,6 +116,8 @@ type Server struct {
 	// (initial TZ 5.7.5: delete after 3). Reset when it reappears.
 	// Schema v2 (Phase 2); migrated from the Phase 1 raw-map encoding.
 	StaleMisses int `json:"stale_misses,omitempty"`
+	// Pinned protects the server from subscription cleanup and renaming.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // GroupType is the mihomo proxy-group strategy (FR-3.3).
