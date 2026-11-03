@@ -288,5 +288,10 @@
   "routes.extImported": "OK: rule copied as route {id} (disabled; enable and Apply at will)",
   "routes.extImportFailed": "Import failed: {msg}",
   "routes.extEmpty": "No external rules found (config file missing or has no rules section).",
-  "routes.extUnavailable": "External rules unavailable: {msg}"
+  "routes.extUnavailable": "External rules unavailable: {msg}",
+  "servers.editTitle": "Edit server",
+  "servers.address": "Address",
+  "servers.addressHint": "Server hostname or IP",
+  "servers.updated": "Server updated",
+  "servers.updateFailed": "Update failed: {msg}"
 }

@@ -24,7 +24,7 @@ WellBoard — менеджер подписки Remnawave для nikki/mihomo: �
 | `ca-bundle` | TLS для запросов подписки |
 | `curl` / `wget` | загрузка геоданных и подписок |
 | `ubus` / `rpcd` | проверка пароля root при входе в интерфейс (входят в base OpenWrt) |
-| ~20 МБ RAM / ~30 МБ flash | Go-бинарь ~15 МБ + state-каталог |
+| ~15 МБ RAM / ~15 МБ flash | Go-бинарь ~9 МБ (с -s -w, v1.0.4) + state-каталог |
 
 Пакет собран для архитектур: `aarch64_cortex-a53`,
 `aarch64_generic`, `x86_64`, `arm_cortex-a7_neon-vfpv4`, `mipsel_24kc`.
@@ -53,14 +53,14 @@ opkg сам подтянет `ca-bundle` и `curl`; `nikki` должен быт�
 
 ## Установка .apk (apk-tools, OpenWrt 24.10 и 25.12)
 
-> **Внимание (проверено на 25.12-SNAPSHOT).** Пакет `.apk` из
-> текущей сборки — в layout apk-v2 (`.PKGINFO` в корне tar). Менеджер
-> apk-tools 3, штатный в 24.10/25.12, такие пакеты **не принимает**:
-> `ERROR: …: v2 package format error`. Установка на 25.12 станет
-> возможной после сборки пакета формата apk-v3 (`apk mkpkg` из
-> apk-tools 3, как в buildroot OpenWrt) — отдельная задача релиза.
-> Контракты службы (UCI/procd/uci-defaults/keep.d) от формата не
-> зависят; на 23.05/24.10 с opkg путь ниже работает (.ipk).
+> **Формат пакета (обновлено).** Начиная с 1.0.4 `.apk` собирается
+> apk-tools 3 `apk mkpkg` — формат apk-v3 (ADB-контейнер), тот же, что
+> использует buildroot OpenWrt 25.12. Проверено структурно
+> (`apk adbdump`, apk-tools 3.0.8). История: пакеты до 1.0.4 собирались
+> вручную в layout apk-v2 и apk-tools 3 их отвергал
+> (`v2 package format error`). Контракты службы (UCI/procd/
+> uci-defaults/keep.d) от формата не зависят; на 23.05/24.10 с opkg
+> путь ниже работает (.ipk).
 
 OpenWrt 24.10 перешёл с opkg на apk; в 25.12 apk — штатный менеджер
 пакетов, `opkg` в системе нет. Порядок установки `.apk`:
@@ -96,7 +96,7 @@ sysupgrade). Проверить пакет без роутера можно в r
 ```sh
 docker run --rm -v "$PWD/dist:/pkg:ro" openwrt/rootfs:x86_64-25.12-SNAPSHOT \
   sh -c 'apk add --allow-untrusted /pkg/wellboard-*.apk'
-# после успешной установки (пакет apk-v3):
+# после успешной установки:
 #   sh /etc/uci-defaults/99_wellboard
 #   /etc/init.d/wellboard enable && /etc/init.d/wellboard start
 #   wget -q -O- http://127.0.0.1:8090/api/v1/health

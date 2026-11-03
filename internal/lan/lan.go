@@ -242,6 +242,7 @@ func SetStatic(dev model.LANDevice, devMode bool) error {
 	if net.ParseIP(dev.IP) == nil {
 		return fmt.Errorf("lan: bad ip %q", dev.IP)
 	}
+	dev.Hostname = sanitizeHostname(dev.Hostname)
 	if devMode {
 		return ErrDevStub
 	}
@@ -259,6 +260,38 @@ func SetStatic(dev model.LANDevice, devMode bool) error {
 		}
 	}
 	return nil
+}
+
+// sanitizeHostname keeps a device name safe for the UCI dhcp host
+// `name` option and dnsmasq host records: letters, digits, '-', '_',
+// '.' pass through; every other byte (quotes, spaces, newlines, tabs,
+// anything a rename field could carry) collapses to a single '-'.
+// Result is trimmed of leading/trailing '-'/'.', capped at the DNS
+// label limit (63) and never empty — falls back to "device".
+func sanitizeHostname(s string) string {
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-.")
+	if len(out) > 63 {
+		out = out[:63]
+	}
+	if out == "" {
+		return "device"
+	}
+	return out
 }
 
 func hasFlag(flags []string, want string) bool {
