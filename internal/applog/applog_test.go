@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -89,13 +90,22 @@ func TestProdPermissions(t *testing.T) {
 
 // TestProdTightensExistingFile: a 0644 mirror file left by an older
 // build is tightened to 0600 when a prod Log opens it for append.
+// Explicit os.Chmod(0644) ensures the starting mode is independent of umask;
+// no root skip is performed so migration is verified in root environments too.
 func TestProdTightensExistingFile(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("running as root: permission bits do not apply")
-	}
 	path := filepath.Join(t.TempDir(), "wellboard.log")
 	if err := os.WriteFile(path, []byte("old 0644 line\n"), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	initFi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initFi.Mode().Perm() != 0o644 {
+		t.Fatalf("initial file mode = %o, want 644 before tightening", initFi.Mode().Perm())
 	}
 
 	l := New(path, 100, true)
@@ -118,10 +128,20 @@ func TestProdTightensExistingFile(t *testing.T) {
 	}
 }
 
-// TestDevPermissions: dev log keeps umask-governed modes (0644 with
-// the test umask), like internal/store TestDevPermissions.
+// TestDevPermissions: dev log keeps umask-governed modes, matching a control
+// file created with 0644 under the same inherited umask.
 func TestDevPermissions(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "wellboard.log")
+	dir := t.TempDir()
+	controlPath := filepath.Join(dir, "control.txt")
+	if err := os.WriteFile(controlPath, []byte("ref\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfi, err := os.Stat(controlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(dir, "wellboard.log")
 	l := New(path, 100, false)
 	l.Printf("dev line")
 	l.Close()
@@ -130,7 +150,80 @@ func TestDevPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if fi.Mode().Perm() != cfi.Mode().Perm() {
+		t.Errorf("file mode = %o, want %o (matching umask-governed 0644 control file)", fi.Mode().Perm(), cfi.Mode().Perm())
+	}
+}
+
+// TestDevPermissionsUmask022: explicit umask 022 test verifying dev mode produces 0644.
+func TestDevPermissionsUmask022(t *testing.T) {
+	old := syscall.Umask(0o022)
+	defer syscall.Umask(old)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wellboard.log")
+	l := New(path, 100, false)
+	l.Printf("dev line 022")
+	l.Close()
+
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if fi.Mode().Perm() != 0o644 {
-		t.Errorf("file mode = %o, want 644 (umask-governed)", fi.Mode().Perm())
+		t.Errorf("file mode under umask 022 = %o, want 644", fi.Mode().Perm())
+	}
+}
+
+// TestDevPermissionsUmask077: explicit umask 077 test verifying dev mode produces 0600.
+func TestDevPermissionsUmask077(t *testing.T) {
+	old := syscall.Umask(0o077)
+	defer syscall.Umask(old)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wellboard.log")
+	l := New(path, 100, false)
+	l.Printf("dev line 077")
+	l.Close()
+
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Errorf("file mode under umask 077 = %o, want 600", fi.Mode().Perm())
+	}
+}
+
+// TestProdTightensExistingFileUnderUmask077: verifies migration from 0644 to 0600 under restrictive umask 077.
+func TestProdTightensExistingFileUnderUmask077(t *testing.T) {
+	old := syscall.Umask(0o077)
+	defer syscall.Umask(old)
+
+	path := filepath.Join(t.TempDir(), "wellboard.log")
+	if err := os.WriteFile(path, []byte("old 0644 line\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	initFi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initFi.Mode().Perm() != 0o644 {
+		t.Fatalf("initial file mode = %o, want 644 before tightening", initFi.Mode().Perm())
+	}
+
+	l := New(path, 100, true)
+	defer l.Close()
+	l.Printf("new prod line under 077")
+
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Errorf("file mode after append under umask 077 = %o, want 600", fi.Mode().Perm())
 	}
 }
