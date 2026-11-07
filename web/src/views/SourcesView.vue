@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { t } from '../i18n'
 import { useSourcesStore } from '../stores/sources'
 import { retryIn as formatRetryIn } from '../retry-time'

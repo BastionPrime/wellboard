@@ -82,7 +82,6 @@
   "sources.kind.subscription": "Подписка",
   "sources.kind.manual": "Вручную",
   "sources.lastUpdate": "Обновлено",
-  "sources.retry": "Повтор",
   "sources.failCount": "Ошибок: {count}",
   "sources.retryIn": "Следующая попытка через {time}",
   "sources.lastError": "Ошибка",

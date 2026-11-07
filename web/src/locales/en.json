@@ -60,7 +60,6 @@
   "sources.kind.subscription": "Subscription",
   "sources.kind.manual": "Manual",
   "sources.lastUpdate": "Updated",
-  "sources.retry": "Retry",
   "sources.failCount": "Failures: {count}",
   "sources.retryIn": "Next attempt in {time}",
   "sources.lastError": "Error",
