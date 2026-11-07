@@ -204,7 +204,7 @@ func TestGateApplogEndToEnd(t *testing.T) {
 	defer ts.Close()
 	seedState(t, srv)
 
-	lg := applog.New("", 100)
+	lg := applog.New("", 100, false)
 	srv.SetLog(func(format string, args ...any) {
 		line := fmt.Sprintf(format, args...)
 		_, _ = lg.Write([]byte(line))

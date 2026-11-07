@@ -169,9 +169,10 @@ func main() {
 	stStore := store.New(stateDir, !dev)
 
 	// App log (FR-9.2): capture every log line into a bounded buffer +
-	// mirror file; GET /api/v1/logs serves the tail.
+	// mirror file; GET /api/v1/logs serves the tail. Prod: the mirror
+	// file is 0600 (NFR-2.3, audit §1); dev keeps umask defaults.
 	appLogFile := filepath.Join(stateDir, "wellboard.log")
-	appLog := applog.New(appLogFile, 0)
+	appLog := applog.New(appLogFile, 0, !dev)
 	log.SetOutput(appLog) // ALL log output lands in the buffer + file
 	defer appLog.Close()
 
