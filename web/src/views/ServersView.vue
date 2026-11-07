@@ -69,6 +69,19 @@ function sourceName(id: string): string {
   return sources.sources.find((s) => s.id === id)?.name ?? id
 }
 
+const busyServerId = ref<string | null>(null)
+
+async function toggleDisabled(id: string, active: boolean) {
+  busyServerId.value = id
+  try {
+    await pool.setServerDisabled(id, !active)
+  } catch (e) {
+    console.error('Failed to toggle server disabled', e)
+  } finally {
+    busyServerId.value = null
+  }
+}
+
 async function addManual() {
   addError.value = ''
   addOk.value = ''
@@ -142,17 +155,27 @@ async function addManual() {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="s in filtered()" :key="s.id" :class="{ stale: s.stale }">
+        <tr v-for="s in filtered()" :key="s.id" :class="{ stale: s.stale, off: s.disabled }">
           <td>
             <div>{{ s.name }}</div>
             <div class="sub">{{ s.type }} · {{ t('servers.bySource', { name: sourceName(s.source_id) }) }}</div>
             <div v-if="s.stale" class="sub err">⚠ {{ t('servers.stale') }} — {{ t('servers.staleHint') }}</div>
+            <div v-if="s.disabled" class="sub muted">⏸ {{ t('servers.disabled') }} — {{ t('servers.disabledHint') }}</div>
           </td>
           <td>
             <template v-if="s.delay_ms">{{ s.delay_ms }} ms</template>
             <template v-else>{{ t('servers.delayNotTested') }}</template>
           </td>
           <td class="actions">
+            <label class="switch">
+              <input
+                type="checkbox"
+                :checked="!s.disabled"
+                :disabled="busyServerId === s.id"
+                @change="toggleDisabled(s.id, ($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ !s.disabled ? t('common.on') : t('common.off') }}</span>
+            </label>
             <button class="edit" @click="startEdit(s)">{{ t('common.edit') }}</button>
             <button class="danger" @click="pool.deleteServer(s.id).catch(() => {})">{{ t('common.delete') }}</button>
           </td>
@@ -318,6 +341,16 @@ tr.stale td {
   padding: 4px 10px;
   font-size: 0.85rem;
   cursor: pointer;
+}
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+tr.off {
+  opacity: 0.6;
 }
 @media (max-width: 360px) {
   .table th:nth-child(3),

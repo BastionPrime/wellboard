@@ -123,7 +123,7 @@ func (u *Updater) update(ctx context.Context, force bool) (*UpdateResult, error)
 	dirty := false
 
 	for i, src := range st.Sources {
-		if src.Kind != string(model.SourceSubscription) || !src.Enabled || src.URL == "" {
+		if src.Kind != string(model.SourceSubscription) || !src.Enabled || src.Disabled || src.URL == "" {
 			continue
 		}
 		// Scheduled cadence gate (B2): skip sources not yet due; manual
