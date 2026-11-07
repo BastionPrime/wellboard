@@ -108,6 +108,8 @@ WellBoard не заводит свою базу паролей: вход вып�
 
 - `geosite_source` / `geoip_source` — независимые значения:
   `runetfreedom`, `metacubex` или `custom`.
+- `delay_test_url` — HTTP(S) URL для индивидуального замера задержки
+  серверов; по умолчанию `http://www.gstatic.com/generate_204`.
 - `custom` требует соответствующего `*_custom_url` (URL источника).
 - `geodata_additions` — свои домены/CIDR поверх категории:
   `{"<категория>": ["example.com", "10.0.0.0/8"]}`.
@@ -120,6 +122,7 @@ WellBoard не заводит свою базу паролей: вход вып�
 | `POST` | `/sources/import-nikki` | Поиск подписок в конфиге nikki (read-only) и создание источников |
 | `GET`/`PATCH`/`DELETE` | `/sources/{id}` | Чтение / правка / удаление |
 | `GET`/`POST` | `/servers` | Пул прокси: список / ручное добавление |
+| `GET` | `/servers/{id}/delay` | Проверка задержки сервера через mihomo |
 | `GET`/`DELETE` | `/servers/{id}` | Чтение / удаление |
 | `GET`/`POST` | `/groups` | Группы прокси (`select`, `url-test`, `fallback`, `load-balance`) |
 | `GET`/`PATCH`/`DELETE` | `/groups/{id}` | Чтение / правка / удаление |

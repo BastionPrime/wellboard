@@ -2069,6 +2069,7 @@ type settingsPatch struct {
 	GeodataAdditions     *map[string][]string `json:"geodata_additions"`
 	DefaultPolicy        *model.Target        `json:"default_policy"`
 	DelayTestIntervalSec *int                 `json:"delay_test_interval_sec"`
+	DelayTestURL         *string              `json:"delay_test_url"`
 }
 
 func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
@@ -2223,6 +2224,13 @@ func (s *Server) handleSettingsPatch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		set.DelayTestIntervalSec = *in.DelayTestIntervalSec
+	}
+	if in.DelayTestURL != nil {
+		if *in.DelayTestURL != "" && !strings.HasPrefix(*in.DelayTestURL, "http://") && !strings.HasPrefix(*in.DelayTestURL, "https://") {
+			writeError(w, httpErr(http.StatusBadRequest, "delay_test_url must be http(s)"))
+			return
+		}
+		set.DelayTestURL = *in.DelayTestURL
 	}
 	if err := s.save(st); err != nil {
 		writeError(w, err)

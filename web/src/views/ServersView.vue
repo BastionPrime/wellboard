@@ -4,19 +4,20 @@ import { t } from '../i18n'
 import { usePoolStore } from '../stores/pool'
 import { useSourcesStore } from '../stores/sources'
 
-// Servers (FR-3): read-only pool view with delay and stale flags, plus
-// manual server entry (FR-1.3): paste one or more share links
-// (vless://, trojan://, ss://, vmess://, hysteria2://, tuic://) — the
-// server parses them with the mihomo converter (POST /api/v1/servers).
-// Honest about the API: no per-server latency-test endpoint exists in
-// phase 3 (the scheduler runs periodic group tests); we show the last
-// measured delay_ms and say so.
+// Servers (FR-3): pool view with delay and stale flags, manual server
+// entry (FR-1.3), and an on-demand per-server delay test (OPE-4115):
+// the button calls GET /api/v1/servers/{id}/delay (mihomo
+// /proxies/{name}/delay server-side) and shows ms or the error inline —
+// no detour into the monitoring tab.
 const pool = usePoolStore()
 const sources = useSourcesStore()
 const search = ref('')
 const addError = ref('')
 const addOk = ref('')
 const adding = ref(false)
+// Per-server delay-test state: id → 'loading' | error message.
+const delayBusy = reactive(new Set<string>())
+const delayError = reactive(new Map<string, string>())
 
 const editError = ref('')
 const editOk = ref('')
@@ -85,14 +86,25 @@ async function addManual() {
     adding.value = false
   }
 }
+
+async function testDelay(id: string) {
+  if (delayBusy.has(id)) return
+  delayBusy.add(id)
+  delayError.delete(id)
+  try {
+    await pool.testServerDelay(id)
+  } catch (e) {
+    delayError.set(id, e instanceof Error ? e.message : String(e))
+  } finally {
+    delayBusy.delete(id)
+  }
+}
 </script>
 
 <template>
   <section>
     <h1>{{ t('servers.title') }}</h1>
     <p class="muted">{{ t('servers.subtitle') }}</p>
-
-    <p class="note">{{ t('servers.delayTestNote') }}</p>
 
     <form class="manual-form" @submit.prevent="addManual">
       <label>
@@ -149,8 +161,20 @@ async function addManual() {
             <div v-if="s.stale" class="sub err">⚠ {{ t('servers.stale') }} — {{ t('servers.staleHint') }}</div>
           </td>
           <td>
-            <template v-if="s.delay_ms">{{ s.delay_ms }} ms</template>
-            <template v-else>{{ t('servers.delayNotTested') }}</template>
+            <div class="delay-cell">
+              <span v-if="delayBusy.has(s.id)" class="spinner" :title="t('servers.delayTesting')"></span>
+              <template v-else-if="s.delay_ms">{{ s.delay_ms }} ms</template>
+              <template v-else>{{ t('servers.delayNotTested') }}</template>
+              <button
+                class="delay-test"
+                :disabled="delayBusy.has(s.id)"
+                :title="t('servers.delayTestHint')"
+                @click="testDelay(s.id)"
+              >
+                {{ delayBusy.has(s.id) ? t('servers.delayTesting') : t('servers.delayTest') }}
+              </button>
+            </div>
+            <div v-if="delayError.get(s.id)" class="sub err">{{ delayError.get(s.id) }}</div>
           </td>
           <td class="actions">
             <button class="edit" @click="startEdit(s)">{{ t('common.edit') }}</button>
@@ -177,6 +201,39 @@ h1 {
   color: #888;
   font-size: 0.8rem;
   margin: 0 0 10px;
+}
+.delay-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.delay-test {
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid #1d4ed8;
+  background: #fff;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.delay-test:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #1d4ed8;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .manual-form {
   display: grid;

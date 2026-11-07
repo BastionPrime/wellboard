@@ -9,6 +9,7 @@ import {
   type LANDevice,
   type ExternalRulesView,
   type ExternalImportAll,
+  type DelayTestResult,
 } from '../api'
 
 // Pool store: servers, groups, routes, templates, LAN devices — the
@@ -243,7 +244,7 @@ export const usePoolStore = defineStore('pool', {
       await api('/servers/' + id, { method: 'DELETE' })
       this.servers = this.servers.filter((s) => s.id !== id)
     },
-    // updateServer edits name/address/parameters in place
+// updateServer edits name/address/parameters in place
     // (PUT /servers/{id}); the id and route/group membership survive.
     async updateServer(
       id: string,
@@ -255,6 +256,13 @@ export const usePoolStore = defineStore('pool', {
       })
       const i = this.servers.findIndex((s) => s.id === id)
       if (i >= 0) this.servers[i] = out
+      return out
+    },
+    // OPE-4115 performs an on-demand per-server delay probe.
+    async testServerDelay(id: string): Promise<DelayTestResult> {
+      const out = await api<DelayTestResult>('/servers/' + id + '/delay')
+      const i = this.servers.findIndex((s) => s.id === id)
+      if (i >= 0) this.servers[i].delay_ms = out.delay_ms
       return out
     },
     // addManualServers pastes share links (vless://…) — POST /servers,
