@@ -462,6 +462,9 @@ func TestUpdaterNetworkErrorKeepsServers(t *testing.T) {
 	if st.Sources[0].LastError == nil {
 		t.Fatal("last_error must be recorded")
 	}
+	if st.Sources[0].FailCount != 1 || st.Sources[0].NextRetryAt == "" {
+		t.Fatalf("failure backoff was not recorded: %+v", st.Sources[0])
+	}
 }
 
 func TestUpdaterHeadersAppliedAndHWIDSent(t *testing.T) {
@@ -527,6 +530,9 @@ func TestUpdaterSuccessUpdatesSource(t *testing.T) {
 	}
 	if src.LastUpdate == "" {
 		t.Fatal("last_update must be set")
+	}
+	if src.FailCount != 0 || src.NextRetryAt != "" {
+		t.Fatalf("success must reset failure backoff: %+v", src)
 	}
 }
 
@@ -759,6 +765,32 @@ func TestIntervalElapsed(t *testing.T) {
 		got := intervalElapsed(model.Source{LastUpdate: c.last, UpdateIntervalSec: c.interval}, now)
 		if got != c.want {
 			t.Errorf("%s: intervalElapsed = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestIntervalElapsedUsesBackoffDeadline(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	src := model.Source{LastUpdate: now.Add(-24 * time.Hour).Format(time.RFC3339), UpdateIntervalSec: 60, FailCount: 2, NextRetryAt: now.Add(time.Minute).Format(time.RFC3339)}
+	if intervalElapsed(src, now) {
+		t.Fatal("source retried before next_retry_at")
+	}
+	if !intervalElapsed(src, now.Add(time.Minute)) {
+		t.Fatal("source not retried at next_retry_at")
+	}
+}
+
+func TestRecordFailureBackoffGrowthAndCap(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	src := model.Source{}
+	for i, want := range []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 16 * time.Minute, 30 * time.Minute, 30 * time.Minute} {
+		recordFailure(&src, now)
+		got, err := time.Parse(time.RFC3339, src.NextRetryAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if delay := got.Sub(now); delay != want {
+			t.Errorf("failure %d delay = %v, want %v", i+1, delay, want)
 		}
 	}
 }

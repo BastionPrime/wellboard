@@ -60,6 +60,8 @@
   "sources.kind.subscription": "Subscription",
   "sources.kind.manual": "Manual",
   "sources.lastUpdate": "Updated",
+  "sources.failCount": "Failures: {count}",
+  "sources.retryIn": "Next attempt in {time}",
   "sources.lastError": "Error",
   "sources.hwid": "Devices",
   "sources.hwidLimit": "device limit reached",

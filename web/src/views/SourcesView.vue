@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { t } from '../i18n'
 import { useSourcesStore } from '../stores/sources'
+import { retryIn as formatRetryIn } from '../retry-time'
 
 // Sources (FR-1): list + add subscription + enable toggle + delete.
 // Honest about the API: there is no "refresh subscription now" endpoint
@@ -10,6 +11,11 @@ const sources = useSourcesStore()
 const form = reactive({ name: '', url: '', interval: 0 })
 const addError = ref('')
 const busy = ref(false)
+const now = ref(Date.now())
+let retryTimer: ReturnType<typeof setInterval> | undefined
+
+onMounted(() => { retryTimer = setInterval(() => { now.value = Date.now() }, 1000) })
+onUnmounted(() => { if (retryTimer) clearInterval(retryTimer) })
 
 async function add() {
   addError.value = ''
@@ -46,6 +52,11 @@ async function toggle(id: string, enabled: boolean) {
 function lastUpdate(s: { last_update?: string }): string {
   if (!s.last_update) return t('sources.never')
   return s.last_update
+}
+
+function retryIn(value?: string): string {
+  if (!value) return ''
+  return formatRetryIn(value, now.value)
 }
 </script>
 
@@ -87,6 +98,8 @@ function lastUpdate(s: { last_update?: string }): string {
             <div>{{ s.name }}</div>
             <div class="sub">{{ t('sources.kind.' + s.kind) }}</div>
             <div v-if="s.last_error" class="sub err">{{ s.last_error }}</div>
+            <div v-if="s.fail_count" class="sub err">{{ t('sources.failCount', { count: s.fail_count }) }}</div>
+            <div v-if="s.next_retry_at && s.fail_count" class="sub">{{ t('sources.retryIn', { time: retryIn(s.next_retry_at) }) }}</div>
           </td>
           <td>{{ lastUpdate(s) }}</td>
           <td>

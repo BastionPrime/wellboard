@@ -75,6 +75,8 @@ type Source struct {
 	Enabled           bool        `json:"enabled,omitempty"`
 	UpdateIntervalSec int         `json:"update_interval_sec,omitempty"`
 	LastUpdate        string      `json:"last_update,omitempty"`
+	FailCount         int         `json:"fail_count,omitempty"`
+	NextRetryAt       string      `json:"next_retry_at,omitempty"`
 	LastError         *string     `json:"last_error,omitempty"`
 	UserInfo          *UserInfo   `json:"userinfo,omitempty"`
 	HWIDStatus        *HWIDStatus `json:"hwid_status,omitempty"`
