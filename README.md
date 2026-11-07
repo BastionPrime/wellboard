@@ -48,17 +48,23 @@ WellBoard лицензируется под **GPL-3.0** (см. секцию
 
 ## Скриншоты
 
-> **TODO (владелец/релиз):** сделать снимки экранов на BPI-R4 и
-> положить в `docs/screenshots/`. Структура секции:
->
-> | Экран | Что показывает | Файл |
-> |---|---|---|
-> | Дашборд | статус VPN, подписки, квоты, активные маршруты | `docs/screenshots/dashboard.png` |
-> | Шаблоны | каталог шаблонов маршрутов, применение в один клик | `docs/screenshots/templates.png` |
-> | Маршруты | список правил, условия, цели, порядок | `docs/screenshots/routes.png` |
-> | Устройства | LAN-устройства, фиксированные IP | `docs/screenshots/devices.png` |
-> | Мониторинг | metacubexd: соединения, задержки | `docs/screenshots/monitoring.png` |
-> | Применение | apply/rollback, история профилей | `docs/screenshots/apply.png` |
+Сняты на dev-стенде (`./wellboard --dev` + локальный mihomo, см.
+[docs/MANUAL_TEST.md](docs/MANUAL_TEST.md)); данные стенда —
+синтетические (mock-подписка из `test/mock-remnawave`), реальных
+учётных данных на снимках нет.
+
+| Экран | Что показывает | Файл |
+|---|---|---|
+| [Дашборд](docs/screenshots/dashboard.png) | статус VPN, подписки, квоты, активные маршруты | `docs/screenshots/dashboard.png` |
+| [Шаблоны](docs/screenshots/templates.png) | каталог шаблонов маршрутов, применение в один клик | `docs/screenshots/templates.png` |
+| [Маршруты](docs/screenshots/routes.png) | список правил, условия, цели, порядок | `docs/screenshots/routes.png` |
+| [Устройства](docs/screenshots/devices.png) | LAN-устройства, фиксированные IP | `docs/screenshots/devices.png` |
+| [Мониторинг](docs/screenshots/monitoring.png) | metacubexd: соединения, задержки | `docs/screenshots/monitoring.png` |
+| [Применение](docs/screenshots/apply.png) | apply/rollback, история профилей | `docs/screenshots/apply.png` |
+
+Примечание: отдельного экрана «Устройства» в SPA нет — LAN-устройства
+и фиксация статических IP живут в редакторе маршрутов (кнопка
+«Devices» у условия src-device), это и показано на снимке.
 
 ## Установка
 
