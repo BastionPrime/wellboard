@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -20,7 +19,6 @@ import (
 
 // fakeApplyer implements ApplyerAPI with scripted behavior.
 type fakeApplyer struct {
-	mu        sync.Mutex
 	applyRes  apply.Result
 	applyErr  error
 	history   []apply.Record
