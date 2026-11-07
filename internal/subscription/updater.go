@@ -133,7 +133,7 @@ func (u *Updater) update(ctx context.Context, force bool) (*UpdateResult, error)
 		}
 		body, hdr, err := u.Fetcher.Fetch(ctx, src.URL, hwidVal, dev)
 		if err != nil {
-		recordFailure(&st.Sources[i], now)
+			recordFailure(&st.Sources[i], now)
 			st.Sources[i].LastError = errString(err)
 			st.Sources[i].LastUpdate = now.UTC().Format(time.RFC3339)
 			res.Errors[src.ID] = redactError(err)
