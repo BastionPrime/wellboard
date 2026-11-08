@@ -257,7 +257,16 @@ export const usePoolStore = defineStore('pool', {
       if (i >= 0) this.servers[i] = out
       return out
     },
-    // addManualServers pastes share links (vless://…) — POST /servers,
+    async setServerPinned(id: string, pinned: boolean): Promise<ServerNode> {
+      const out = await api<ServerNode>('/servers/' + id + '/pinned', {
+        method: 'PATCH',
+        body: JSON.stringify({ pinned }),
+      })
+      const i = this.servers.findIndex((s) => s.id === id)
+      if (i >= 0) this.servers[i] = out
+      return out
+    },
+
     // the server parses them with the mihomo converter (FR-1.3).
     async addManualServers(links: string) {
       const out = await api<{ servers: ServerNode[] }>('/servers', {

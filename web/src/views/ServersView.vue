@@ -145,7 +145,10 @@ async function addManual() {
         <tr v-for="s in filtered()" :key="s.id" :class="{ stale: s.stale }">
           <td>
             <div>{{ s.name }}</div>
-            <div class="sub">{{ s.type }} · {{ t('servers.bySource', { name: sourceName(s.source_id) }) }}</div>
+            <div class="sub">
+              {{ s.type }} · {{ t('servers.bySource', { name: sourceName(s.source_id) }) }}
+              <span v-if="s.pinned" class="pin-label">📌 {{ t('servers.pinned') }}</span>
+            </div>
             <div v-if="s.stale" class="sub err">⚠ {{ t('servers.stale') }} — {{ t('servers.staleHint') }}</div>
           </td>
           <td>
@@ -153,6 +156,14 @@ async function addManual() {
             <template v-else>{{ t('servers.delayNotTested') }}</template>
           </td>
           <td class="actions">
+            <button
+              class="pin"
+              :class="{ pinned: s.pinned }"
+              :title="t('servers.pinnedHint')"
+              @click="pool.setServerPinned(s.id, !s.pinned).catch(() => {})"
+            >
+              {{ s.pinned ? t('servers.unpin') : t('servers.pin') }}
+            </button>
             <button class="edit" @click="startEdit(s)">{{ t('common.edit') }}</button>
             <button class="danger" @click="pool.deleteServer(s.id).catch(() => {})">{{ t('common.delete') }}</button>
           </td>
@@ -310,6 +321,23 @@ tr.stale td {
   font-size: 0.9rem;
   cursor: pointer;
 }
+.pin {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #b45309;
+  background: #fff;
+  color: #b45309;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.pin.pinned {
+  background: #b45309;
+  color: #fff;
+}
+.pin-label {
+  color: #b45309;
+}
+
 .danger {
   background: #fff;
   color: #b91c1c;
