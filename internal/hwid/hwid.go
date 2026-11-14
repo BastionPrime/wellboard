@@ -297,7 +297,7 @@ func (m *Manager) save(id *Identity) error {
 		return fmt.Errorf("hwid: create dir: %w", err)
 	}
 	if m.Prod {
-		// MkdirAll keeps the existing dir's mode; enforce 0700 (NFR-2.3).
+		// #nosec G302 -- chmod 0700: stricter than the required 0600; MkdirAll keeps an existing dir's mode so it is re-enforced here (NFR-2.3)
 		if err := os.Chmod(m.Dir, 0o700); err != nil {
 			return fmt.Errorf("hwid: chmod dir: %w", err)
 		}
@@ -315,16 +315,16 @@ func (m *Manager) save(id *Identity) error {
 	}()
 	if m.Prod {
 		if err = tmp.Chmod(0o600); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			return fmt.Errorf("hwid: chmod: %w", err)
 		}
 	}
 	if _, err = tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("hwid: write: %w", err)
 	}
 	if err = tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("hwid: sync: %w", err)
 	}
 	if err = tmp.Close(); err != nil {

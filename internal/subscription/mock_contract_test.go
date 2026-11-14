@@ -321,7 +321,7 @@ func TestEndToEndNormalSubscription(t *testing.T) {
 
 func TestEndToEndNetworkFailureKeepsServers(t *testing.T) {
 	base := startMock(t)
-	stStore, st := setupState(t, base+"/sub")
+	stStore, _ := setupState(t, base+"/sub")
 
 	// Seed two servers via a successful round.
 	c := newClient(base)
