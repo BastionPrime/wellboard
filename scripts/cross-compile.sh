@@ -16,6 +16,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 mkdir -p .build
 
+# Single source of truth for the release version (same file the root
+# Makefile, scripts/package-*.sh and packaging/openwrt/Makefile read).
+VERSION="$(cat VERSION)"
+
 build_one() {
     _arch=$1       # OpenWrt profile name (output suffix)
     _goarch=$2     # GOARCH
@@ -27,12 +31,12 @@ build_one() {
     [ -n "$_goarm" ] && _envs="$_envs -e GOARM=${_goarm}"
     [ -n "$_gomips" ] && _envs="$_envs -e GOMIPS=${_gomips}"
 
-    echo "==> building $_out (GOARCH=$_goarch GOARM=${_goarm:-} GOMIPS=${_gomips:-})"
+    echo "==> building $_out (GOARCH=$_goarch GOARM=${_goarm:-} GOMIPS=${_gomips:-}) version=$VERSION"
     # shellcheck disable=SC2086
     docker run --rm -v "$ROOT":/app -w /app $_envs \
         -e GOCACHE=/tmp/gocache -e GOPATH=/tmp/gopath \
         golang:1.23-alpine \
-        go build -trimpath -ldflags='-s -w' -o "$_out" ./cmd/wellboard
+        go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o "$_out" ./cmd/wellboard
 }
 
 build_one aarch64_cortex-a53   arm64
