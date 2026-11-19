@@ -20,7 +20,7 @@ DECISIONS-phase7 D29-D33).
 | hwid файл 0600, каталог 0700 | ✅ | `internal/hwid/hwid.go:316-321` (Chmod 0600 в prod), `hwid.go:299-304` (Chmod dir 0700) |
 | Тест: hwid 0600/0700 | ✅ | `internal/hwid/hwid_test.go:130-138` |
 | uci-defaults/init создаёт /etc/wellboard 0700 | ✅ | `packaging/openwrt/files/uci-defaults.sh:10-13`, `wellboard.init:41-42`, `packaging/openwrt/Makefile` (INSTALL_DIR + chmod 0700) |
-| Лог-файл wellboard.log | ⚠️ 0644 | `internal/applog/applog.go:42` — O_APPEND 0644. В логи не пишутся секреты (см. п. 5), но файл читаем всеми локальными пользователями. На роутере один root-пользователь; риск низкий. Отложено до prod-эскалации (см. DECISIONS-phase7 D33). |
+| Лог-файл wellboard.log | ✅ 0600 в проде | `internal/applog/applog.go:59-83` (New: OpenFile 0600 + Chmod в prod, 0644 только в dev), `cmd/wellboard/main.go:175` (applog.New(..., !dev)), тест: `internal/applog/applog_test.go:75` (TestProdPermissions), `applog_test.go:92` (TestProdTightensExistingFile: существующий 0644-файл от старой сборки подтягивается до 0600 при открытии на append). Закрыто по эскалации D33. |
 
 ## 2. LAN-only слушание (NFR-2.1)
 
