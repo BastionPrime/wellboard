@@ -22,6 +22,8 @@ export interface Source {
   enabled?: boolean
   update_interval_sec?: number
   last_update?: string
+  fail_count?: number
+  next_retry_at?: string
   last_error?: string | null
   userinfo?: UserInfo | null
   hwid_status?: HWIDStatus | null
@@ -35,6 +37,7 @@ export interface ServerNode {
   type: string
   delay_ms?: number
   stale?: boolean
+  pinned?: boolean
   // raw is the mihomo proxy map (PUT /servers/{id} patches entries).
   raw?: { server?: string; [key: string]: unknown }
 }

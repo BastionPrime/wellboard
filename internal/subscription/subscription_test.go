@@ -326,6 +326,50 @@ func TestMergeStaleServerResurrected(t *testing.T) {
 	}
 }
 
+func TestMergePinnedServerSurvivesRenameAndCleanup(t *testing.T) {
+	st := testState()
+	pinned := map[string]any{"name": "NL-1", "type": "ss", "server": "203.0.113.10", "port": 8388, "password": "old"}
+	Merge(st, "sub_1", []map[string]any{pinned})
+	st.Servers[0].Pinned = true
+	id := st.Servers[0].ID
+
+	// The subscription changes the display name and raw settings. The
+	// pinned server retains its identity and user-selected representation.
+	res := Merge(st, "sub_1", []map[string]any{{"name": "renamed", "type": "ss", "server": "203.0.113.10", "port": 8388, "password": "new"}})
+	if res.Updated != 1 || len(st.Servers) != 1 {
+		t.Fatalf("rename update: %+v, servers=%d", res, len(st.Servers))
+	}
+	if st.Servers[0].ID != id || st.Servers[0].Name != "NL-1" || st.Servers[0].Raw["password"] != "old" {
+		t.Fatalf("pinned server was overwritten: %+v", st.Servers[0])
+	}
+
+	// Missing subscription entries stay stale-but-pinned and are never deleted.
+	for i := 0; i < StaleAfterUpdates+1; i++ {
+		Merge(st, "sub_1", nil)
+	}
+	if len(st.Servers) != 1 || !st.Servers[0].Pinned || !st.Servers[0].Stale || st.Servers[0].ID != id {
+		t.Fatalf("pinned server was cleaned up: %+v", st.Servers)
+	}
+}
+
+func TestMergeUnpinnedServerStillGetsRenamedAndDeleted(t *testing.T) {
+	st := testState()
+	Merge(st, "sub_1", []map[string]any{{"name": "NL-1", "type": "ss", "server": "203.0.113.10", "port": 8388}})
+	// Unpinned rename: the renamed entry is added as a new server; the old
+	// name ages through the stale window and is deleted (main semantics).
+	res := Merge(st, "sub_1", []map[string]any{{"name": "renamed", "type": "ss", "server": "203.0.113.10", "port": 8388}})
+	if res.Added != 1 || res.Stale != 1 {
+		t.Fatalf("rename should add new + stale old: %+v", res)
+	}
+	renamed := []map[string]any{{"name": "renamed", "type": "ss", "server": "203.0.113.10", "port": 8388}}
+	for i := 0; i < StaleAfterUpdates; i++ {
+		Merge(st, "sub_1", renamed)
+	}
+	if len(st.Servers) != 1 || st.Servers[0].Name != "renamed" {
+		t.Fatalf("old unpinned entry should be deleted after window: %+v", st.Servers)
+	}
+}
+
 func TestMergeOtherSourcesUntouched(t *testing.T) {
 	st := testState()
 	st.Servers = append(st.Servers, model.Server{
@@ -462,6 +506,9 @@ func TestUpdaterNetworkErrorKeepsServers(t *testing.T) {
 	if st.Sources[0].LastError == nil {
 		t.Fatal("last_error must be recorded")
 	}
+	if st.Sources[0].FailCount != 1 || st.Sources[0].NextRetryAt == "" {
+		t.Fatalf("failure backoff was not recorded: %+v", st.Sources[0])
+	}
 }
 
 func TestUpdaterHeadersAppliedAndHWIDSent(t *testing.T) {
@@ -527,6 +574,9 @@ func TestUpdaterSuccessUpdatesSource(t *testing.T) {
 	}
 	if src.LastUpdate == "" {
 		t.Fatal("last_update must be set")
+	}
+	if src.FailCount != 0 || src.NextRetryAt != "" {
+		t.Fatalf("success must reset failure backoff: %+v", src)
 	}
 }
 
@@ -759,6 +809,32 @@ func TestIntervalElapsed(t *testing.T) {
 		got := intervalElapsed(model.Source{LastUpdate: c.last, UpdateIntervalSec: c.interval}, now)
 		if got != c.want {
 			t.Errorf("%s: intervalElapsed = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestIntervalElapsedUsesBackoffDeadline(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	src := model.Source{LastUpdate: now.Add(-24 * time.Hour).Format(time.RFC3339), UpdateIntervalSec: 60, FailCount: 2, NextRetryAt: now.Add(time.Minute).Format(time.RFC3339)}
+	if intervalElapsed(src, now) {
+		t.Fatal("source retried before next_retry_at")
+	}
+	if !intervalElapsed(src, now.Add(time.Minute)) {
+		t.Fatal("source not retried at next_retry_at")
+	}
+}
+
+func TestRecordFailureBackoffGrowthAndCap(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	src := model.Source{}
+	for i, want := range []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 16 * time.Minute, 30 * time.Minute, 30 * time.Minute} {
+		recordFailure(&src, now)
+		got, err := time.Parse(time.RFC3339, src.NextRetryAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if delay := got.Sub(now); delay != want {
+			t.Errorf("failure %d delay = %v, want %v", i+1, delay, want)
 		}
 	}
 }

@@ -63,14 +63,22 @@ func Merge(st *model.State, sourceID string, proxies []map[string]any) MergeResu
 
 	// Index current servers of this source by match key.
 	current := map[MatchKey]int{}
+	pinnedByEndpoint := map[string]int{}
 	for i, s := range st.Servers {
 		if s.SourceID != sourceID {
 			continue
 		}
 		current[MatchKey{Name: s.Name, Server: rawStr(s.Raw, "server"), Port: rawStr(s.Raw, "port")}] = i
+		if s.Pinned {
+			pinnedByEndpoint[rawStr(s.Raw, "server")+"|"+rawStr(s.Raw, "port")] = i
+		}
 	}
 
 	seen := map[MatchKey]bool{}
+	// endpointSeen guards pinned servers that were matched by endpoint
+	// (not by their stale name): their key differs from the proxy key, so
+	// the rebuild below must not count them as missing.
+	endpointSeen := map[int]bool{}
 	for _, p := range proxies {
 		key := Key(p)
 		if key.Name == "" || key.Server == "" {
@@ -84,11 +92,23 @@ func Merge(st *model.State, sourceID string, proxies []map[string]any) MergeResu
 		raw := cloneRaw(p)
 		typ := asString(p["type"])
 
-		if idx, ok := current[key]; ok {
+		idx, ok := current[key]
+		if !ok {
+			// A pinned server keeps its identity (name/raw) even when
+			// the subscription renamed the entry or dropped the old
+			// name: match by endpoint (server, port) within the source.
+			if pi, ok2 := pinnedByEndpoint[key.Server+"|"+key.Port]; ok2 {
+				idx, ok = pi, true
+				endpointSeen[idx] = true
+			}
+		}
+		if ok {
 			srv := &st.Servers[idx]
-			srv.Raw = raw
-			srv.Type = typ
-			srv.Name = key.Name
+			if !srv.Pinned {
+				srv.Raw = raw
+				srv.Type = typ
+				srv.Name = key.Name
+			}
 			srv.Stale = false
 			srv.StaleMisses = 0
 			res.Updated++
@@ -115,8 +135,17 @@ func Merge(st *model.State, sourceID string, proxies []map[string]any) MergeResu
 			continue
 		}
 		key := MatchKey{Name: s.Name, Server: rawStr(s.Raw, "server"), Port: rawStr(s.Raw, "port")}
-		if seen[key] {
+		if seen[key] || endpointSeen[i] {
 			next = append(next, s)
+			continue
+		}
+		if s.Pinned {
+			// Absent from this refresh but pinned: keep the server and
+			// surface «нет в подписке» (Stale) — pin only blocks the
+			// deletion window (OPE-4113).
+			s.Stale = true
+			next = append(next, s)
+			res.Stale++
 			continue
 		}
 		miss := s.StaleMisses + 1

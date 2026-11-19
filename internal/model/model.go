@@ -84,6 +84,8 @@ type Source struct {
 	Enabled           bool        `json:"enabled,omitempty"`
 	UpdateIntervalSec int         `json:"update_interval_sec,omitempty"`
 	LastUpdate        string      `json:"last_update,omitempty"`
+	FailCount         int         `json:"fail_count,omitempty"`
+	NextRetryAt       string      `json:"next_retry_at,omitempty"`
 	LastError         *string     `json:"last_error,omitempty"`
 	UserInfo          *UserInfo   `json:"userinfo,omitempty"`
 	HWIDStatus        *HWIDStatus `json:"hwid_status,omitempty"`
@@ -125,6 +127,8 @@ type Server struct {
 	// (initial TZ 5.7.5: delete after 3). Reset when it reappears.
 	// Schema v2 (Phase 2); migrated from the Phase 1 raw-map encoding.
 	StaleMisses int `json:"stale_misses,omitempty"`
+	// Pinned protects the server from subscription cleanup and renaming.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // GroupType is the mihomo proxy-group strategy (FR-3.3).

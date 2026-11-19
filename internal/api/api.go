@@ -133,6 +133,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/servers", s.handleServersCreate)
 	mux.HandleFunc("GET /api/v1/servers/{id}", s.handleServerGet)
 	mux.HandleFunc("PUT /api/v1/servers/{id}", s.handleServerUpdate)
+	mux.HandleFunc("PATCH /api/v1/servers/{id}/pinned", s.handleServerPinned)
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", s.handleServerDelete)
 	mux.HandleFunc("GET /api/v1/groups", s.handleGroupsList)
 	mux.HandleFunc("POST /api/v1/groups", s.handleGroupsCreate)
@@ -689,6 +690,56 @@ func (s *Server) handleServerUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log("server %s updated (name %q)", id, srv.Name)
+	writeJSON(w, http.StatusOK, srv)
+}
+
+// serverPinnedIn is the payload for PATCH /api/v1/servers/{id}/pinned.
+type serverPinnedIn struct {
+	Pinned *bool `json:"pinned"`
+}
+
+// handleServerPinned pins or unpins a server in the pool. A pinned server
+// survives subscription refreshes: it is never deleted by auto-cleanup and
+// never renamed/overwritten by a refreshed subscription entry (OPE-4113).
+func (s *Server) handleServerPinned(w http.ResponseWriter, r *http.Request) {
+	var in serverPinnedIn
+	if err := decodeStrict(r, &in, 0); err != nil {
+		writeError(w, err)
+		return
+	}
+	if in.Pinned == nil {
+		writeError(w, httpErr(http.StatusBadRequest, "pinned (boolean) is required"))
+		return
+	}
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer s.unlock()
+	id := r.PathValue("id")
+	idx := -1
+	for i := range st.Servers {
+		if st.Servers[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	srv := &st.Servers[idx]
+	srv.Pinned = *in.Pinned
+	// Stale/StaleMisses are owned by the subscription merge: a pinned
+	// server absent from the subscription stays in the pool and keeps
+	// its «нет в подписке» mark (OPE-4113 criterion); reappearing in the
+	// subscription clears it.
+	if err := s.save(st); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.log("server %s pinned=%v", id, srv.Pinned)
 	writeJSON(w, http.StatusOK, srv)
 }
 

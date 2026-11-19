@@ -133,6 +133,7 @@ func (u *Updater) update(ctx context.Context, force bool) (*UpdateResult, error)
 		}
 		body, hdr, err := u.Fetcher.Fetch(ctx, src.URL, hwidVal, dev)
 		if err != nil {
+			recordFailure(&st.Sources[i], now)
 			st.Sources[i].LastError = errString(err)
 			st.Sources[i].LastUpdate = now.UTC().Format(time.RFC3339)
 			res.Errors[src.ID] = redactError(err)
@@ -143,6 +144,7 @@ func (u *Updater) update(ctx context.Context, force bool) (*UpdateResult, error)
 
 		proxies, perr := ParseBody(body)
 		if perr != nil {
+			recordFailure(&st.Sources[i], now)
 			st.Sources[i].LastError = errString(perr)
 			st.Sources[i].LastUpdate = now.UTC().Format(time.RFC3339)
 			res.Errors[src.ID] = redactError(perr)
@@ -154,6 +156,8 @@ func (u *Updater) update(ctx context.Context, force bool) (*UpdateResult, error)
 		merge := Merge(st, src.ID, proxies)
 
 		st.Sources[i].LastError = nil
+		st.Sources[i].FailCount = 0
+		st.Sources[i].NextRetryAt = ""
 		st.Sources[i].LastUpdate = now.UTC().Format(time.RFC3339)
 		st.Sources[i].UserInfo = ParseUserInfo(hdr.Userinfo)
 		st.Sources[i].Announce = announcePtr(DecodeMaybeBase64(hdr.Announce))
@@ -214,6 +218,7 @@ func (u *Updater) UpdateOne(ctx context.Context, sourceID string) (*UpdateResult
 
 	body, hdr, ferr := u.Fetcher.Fetch(ctx, src.URL, hwidVal, dev)
 	if ferr != nil {
+		recordFailure(&st.Sources[idx], u.now())
 		st.Sources[idx].LastError = errString(ferr)
 		st.Sources[idx].LastUpdate = u.now().UTC().Format(time.RFC3339)
 		_ = u.Store.Save(st)
@@ -222,6 +227,7 @@ func (u *Updater) UpdateOne(ctx context.Context, sourceID string) (*UpdateResult
 	}
 	proxies, perr := ParseBody(body)
 	if perr != nil {
+		recordFailure(&st.Sources[idx], u.now())
 		st.Sources[idx].LastError = errString(perr)
 		st.Sources[idx].LastUpdate = u.now().UTC().Format(time.RFC3339)
 		_ = u.Store.Save(st)
@@ -231,6 +237,8 @@ func (u *Updater) UpdateOne(ctx context.Context, sourceID string) (*UpdateResult
 
 	Merge(st, sourceID, proxies)
 	st.Sources[idx].LastError = nil
+	st.Sources[idx].FailCount = 0
+	st.Sources[idx].NextRetryAt = ""
 	st.Sources[idx].LastUpdate = u.now().UTC().Format(time.RFC3339)
 	st.Sources[idx].UserInfo = ParseUserInfo(hdr.Userinfo)
 	st.Sources[idx].Announce = announcePtr(DecodeMaybeBase64(hdr.Announce))
@@ -308,6 +316,12 @@ func redactError(err error) string {
 // interval is always due; otherwise the elapsed time since LastUpdate
 // must be ≥ the per-source interval.
 func intervalElapsed(src model.Source, now time.Time) bool {
+	if src.FailCount > 0 && src.NextRetryAt != "" {
+		next, err := time.Parse(time.RFC3339, src.NextRetryAt)
+		if err == nil {
+			return !now.Before(next)
+		}
+	}
 	if src.LastUpdate == "" || src.UpdateIntervalSec <= 0 {
 		return true
 	}
@@ -316,4 +330,21 @@ func intervalElapsed(src model.Source, now time.Time) bool {
 		return true // unreadable timestamp: safer to fetch than to starve
 	}
 	return now.Sub(last) >= time.Duration(src.UpdateIntervalSec)*time.Second
+}
+
+const (
+	baseRetryDelay = 30 * time.Second
+	maxRetryDelay  = 30 * time.Minute
+)
+
+func recordFailure(src *model.Source, now time.Time) {
+	src.FailCount++
+	delay := baseRetryDelay
+	for n := 1; n < src.FailCount && delay < maxRetryDelay; n++ {
+		delay *= 2
+	}
+	if delay > maxRetryDelay {
+		delay = maxRetryDelay
+	}
+	src.NextRetryAt = now.Add(delay).UTC().Format(time.RFC3339)
 }

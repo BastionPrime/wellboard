@@ -718,6 +718,39 @@ func TestServerUpdateRoundTrip(t *testing.T) {
 	}
 }
 
+func TestServerPinnedRoundTrip(t *testing.T) {
+	srv, ts := newTestServer(t)
+	defer ts.Close()
+	addServerDirect(t, srv, "srv_pin1")
+
+	code, body := do(t, ts, "PATCH", "/api/v1/servers/srv_pin1/pinned", `{"pinned":true}`)
+	if code != http.StatusOK {
+		t.Fatalf("PATCH pin: %d %s", code, body)
+	}
+	var pinned model.Server
+	if err := json.Unmarshal([]byte(body), &pinned); err != nil {
+		t.Fatal(err)
+	}
+	if !pinned.Pinned {
+		t.Fatal("response must report pinned=true")
+	}
+	code, body = do(t, ts, "GET", "/api/v1/servers/srv_pin1", "")
+	if code != http.StatusOK {
+		t.Fatalf("GET after pin: %d %s", code, body)
+	}
+	var got model.Server
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Pinned {
+		t.Fatal("pin must be persisted")
+	}
+	code, body = do(t, ts, "PATCH", "/api/v1/servers/srv_pin1/pinned", `{"pinned":false}`)
+	if code != http.StatusOK || strings.Contains(body, `"pinned":true`) {
+		t.Fatalf("PATCH unpin: %d %s", code, body)
+	}
+}
+
 func TestServerUpdateConflictName(t *testing.T) {
 	srv, ts := newTestServer(t)
 	defer ts.Close()
