@@ -5,6 +5,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -20,6 +21,7 @@ import (
 	"github.com/wellboard/wellboard/internal/applog"
 	"github.com/wellboard/wellboard/internal/apply"
 	"github.com/wellboard/wellboard/internal/geodata"
+	"github.com/wellboard/wellboard/internal/model"
 	"github.com/wellboard/wellboard/internal/nikki"
 )
 
@@ -70,6 +72,7 @@ func (s *Server) registerMonitor(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/pending", s.handlePending)
 	mux.HandleFunc("GET /api/v1/logs", s.handleLogs)
 	mux.HandleFunc("GET /api/v1/diagnostics", s.handleDiagnostics)
+	mux.HandleFunc("GET /api/v1/servers/{id}/delay", s.handleServerDelay)
 	mux.HandleFunc("GET /ui/metacubexd/", s.handleMetaCubeXD)
 	mux.HandleFunc("GET /ui/metacubexd", s.handleMetaCubeXDRoot)
 	mux.HandleFunc("/api/mihomo/", s.handleMihomoProxy)
@@ -278,6 +281,100 @@ func probeMihomoAPI(ctx context.Context, addr, secret string) diagCheck {
 		Name: "mihomo", OK: true, Detail: fmt.Sprintf("API at %s answered: %s", addr, ver),
 		Measure: time.Since(start).Round(time.Millisecond).String(),
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Per-server delay test (OPE-4115): mihomo /proxies/{name}/delay, like
+// the metacubexd per-proxy button but from the Servers screen. The
+// target URL comes from settings.delay_test_url (default
+// model.DefaultDelayTestURL); the probe timeout is 5 s. A missing
+// server is 404; an unreachable/failed mihomo side degrades to 502 —
+// WellBoard itself stays up either way.
+// -----------------------------------------------------------------------------
+
+// delayTestTimeout bounds the whole upstream probe (dial + request).
+const delayTestTimeout = 5 * time.Second
+
+// serverDelayOut is the success body of GET /api/v1/servers/{id}/delay.
+type serverDelayOut struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	DelayMS int    `json:"delay_ms"`
+	URL     string `json:"url"`
+}
+
+func (s *Server) handleServerDelay(w http.ResponseWriter, r *http.Request) {
+	if s.monitor.MihomoAPIAddr == "" {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "mihomo API not configured (external-controller address unknown)"})
+		return
+	}
+
+	st, err := s.load()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	id := r.PathValue("id")
+	var srvName string
+	found := false
+	for i := range st.Servers {
+		if st.Servers[i].ID == id {
+			srvName = st.Servers[i].Name
+			found = true
+			break
+		}
+	}
+	testURL := st.Settings.DelayTestURL
+	s.unlock()
+	if !found {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server " + id + " not found"})
+		return
+	}
+	if testURL == "" {
+		testURL = model.DefaultDelayTestURL
+	}
+
+	delay, err := s.probeServerDelay(r.Context(), srvName, testURL)
+	if err != nil {
+		s.log("delay test %s (%s): %v", id, srvName, err)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, serverDelayOut{ID: id, Name: srvName, DelayMS: delay, URL: testURL})
+}
+
+// probeServerDelay calls GET /proxies/{name}/delay on the mihomo
+// external-controller and returns the measured latency in ms. Any
+// failure (unreachable API, non-2xx, malformed body) is an error for
+// the caller to surface as 502.
+func (s *Server) probeServerDelay(ctx context.Context, name, testURL string) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, delayTestTimeout)
+	defer cancel()
+	u := "http://" + s.monitor.MihomoAPIAddr + "/proxies/" + url.PathEscape(name) +
+		"/delay?url=" + url.QueryEscape(testURL) + "&timeout=5000"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return 0, fmt.Errorf("delay probe: %w", err)
+	}
+	if s.monitor.MihomoAPISecret != "" {
+		req.Header.Set("Authorization", "Bearer "+s.monitor.MihomoAPISecret)
+	}
+	client := &http.Client{Timeout: delayTestTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("mihomo API unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, fmt.Errorf("mihomo delay probe failed: status %d", resp.StatusCode)
+	}
+	var out struct {
+		Delay int `json:"delay"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&out); err != nil {
+		return 0, fmt.Errorf("mihomo delay probe: bad response: %w", err)
+	}
+	return out.Delay, nil
 }
 
 // -----------------------------------------------------------------------------
