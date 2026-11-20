@@ -17,7 +17,19 @@ GO_DOCKER := docker run --rm -v $(CURDIR):/app -w /app \
   -e GOPATH=/tmp/gopath \
   $(GO_IMAGE)
 
-.PHONY: build test vet fmt lint run clean cross
+# Tools are pinned versions fetched on demand inside the container via
+# `go install` (nothing is installed on the host); GOTOOLCHAIN=local keeps
+# the pinned golang:1.23-alpine image from trying to download another
+# toolchain. staticcheck must stay compatible with the container's Go.
+STATICCHECK_VERSION ?= 2024.1
+GOSEC_VERSION ?= v2.21.4
+
+GO_TOOLS := sh -c 'go install \
+  honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) \
+  github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) \
+  && staticcheck ./... && gosec ./...'
+
+.PHONY: build test vet fmt lint lint-staticcheck lint-gosec run clean cross
 
 build:
 	$(GO_DOCKER) go build -ldflags "-X main.version=$(VERSION)" -o wellboard ./cmd/wellboard
@@ -31,11 +43,21 @@ vet:
 fmt:
 	$(GO_DOCKER) gofmt -l -w .
 
-# lint: fail if any .go file is not gofmt-clean, then go vet.
-# golangci-lint is deferred (needs a custom image); see docs/DECISIONS.md (D4).
+# lint: gofmt check, go vet, then staticcheck and gosec (same docker
+# pattern as build/test; tools are installed at pinned versions inside
+# the throwaway container). Superseded D4 (docs/DECISIONS.md): staticcheck
+# and gosec now run; golangci-lint stays deferred.
 lint:
 	$(GO_DOCKER) sh -c 'files=$$(gofmt -l .); if [ -n "$$files" ]; then echo "gofmt: files need formatting (run: make fmt)"; echo "$$files"; exit 1; fi'
 	$(GO_DOCKER) go vet ./...
+	$(GO_DOCKER) $(GO_TOOLS)
+
+# Individual tool targets for faster triage loops.
+lint-staticcheck:
+	$(GO_DOCKER) sh -c 'go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) && staticcheck ./...'
+
+lint-gosec:
+	$(GO_DOCKER) sh -c 'go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) && gosec ./...'
 
 # Dev run: starts the daemon in dev mode with the UI port published.
 run:

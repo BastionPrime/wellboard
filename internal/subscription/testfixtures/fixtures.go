@@ -82,11 +82,11 @@ func NewMux() *http.ServeMux {
 	mux.HandleFunc("/sub/links", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "text/plain")
 		w.Header().Set("profile-title", "base64:"+base64.StdEncoding.EncodeToString([]byte("Fixture Sub")))
-		fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(SubLinks)))
+		_, _ = fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(SubLinks)))
 	})
 	mux.HandleFunc("/sub/plain", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "text/plain")
-		io.WriteString(w, SubLinks)
+		_, _ = io.WriteString(w, SubLinks)
 	})
 
 	// --- FR-2.4 device-limit fixtures ---------------------------------
@@ -122,7 +122,7 @@ func NewMux() *http.ServeMux {
 		// Abruptly close: the client sees a network error, not a status.
 		if hj, ok := w.(http.Hijacker); ok {
 			if conn, _, err := hj.Hijack(); err == nil {
-				conn.Close()
+				_ = conn.Close() // deliberate abrupt close: the client must see a network error
 				return
 			}
 		}

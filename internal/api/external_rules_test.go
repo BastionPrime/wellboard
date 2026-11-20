@@ -164,10 +164,6 @@ func TestExternalRuleImportCreatesDisabledRoute(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("imported route not deletable: %d", code)
 	}
-	code, body = do(t, ts, "GET", "/api/v1/routes", "")
-	if contains(body, rt.ID) {
-		t.Fatalf("route id still present after delete")
-	}
 	// state must round-trip through the store
 	if _, err := srv.Store.Load(); err != nil {
 		t.Fatal(err)

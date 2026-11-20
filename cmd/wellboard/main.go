@@ -182,6 +182,7 @@ func main() {
 	// and builtin overrides survive sysupgrade via keep.d (it covers
 	// all of /etc/wellboard).
 	overlayDir := filepath.Join(stateDir, "templates")
+	// #nosec G301 -- overlay dir holds non-secret template yamls; 0755 keeps them readable after a sysupgrade, matches the templates convention
 	if err := os.MkdirAll(overlayDir, 0o755); err != nil {
 		if dev {
 			log.Printf("warning: templates overlay: %v", err)
